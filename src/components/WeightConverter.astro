@@ -1,0 +1,325 @@
+---
+// Cups ↔ grams converter for one ingredient. The result updates as the
+// user types; the initial 1-cup answer is server-rendered so the page
+// still answers without JavaScript (the reference table below does too).
+//
+// Accessibility follows Modern Web Guidance: `forms` (real <form>,
+// labels above inputs, hints above inputs, 48px targets), 
+// `validate-input-after-interaction` (:user-invalid styling, error text
+// revealed only after interaction), `accessible-error-announcement`
+// (aria-invalid synced with :user-invalid, one polite live region).
+interface Props {
+  name: string;
+  gramsPerCup: number;
+  presets: { label: string; cups: number }[];
+  extraUnit?: { label: string; grams: number; note: string };
+}
+
+const { name, gramsPerCup, presets, extraUnit } = Astro.props;
+const ingredient = name.toLowerCase();
+---
+
+<form
+  id="converter-form"
+  class="converter"
+  aria-labelledby="converter-heading"
+  data-grams-per-cup={gramsPerCup}
+  data-ingredient={ingredient}
+  data-extra-grams={extraUnit ? extraUnit.grams : undefined}
+  data-extra-label={extraUnit ? extraUnit.label.toLowerCase() : undefined}
+>
+  <h2 id="converter-heading">Convert {ingredient}</h2>
+  <div class="converter-fields">
+    <div class="field">
+      <label for="cups-input">Cups</label>
+      <span id="cups-hint" class="hint">US cups, {ingredient}</span>
+      <input
+        type="number"
+        id="cups-input"
+        name="cups"
+        value="1"
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="cups-hint"
+        aria-invalid="false"
+        data-error="cups-error"
+      />
+      <div id="cups-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more cups.
+      </div>
+    </div>
+    <div class="field">
+      <label for="grams-input">Grams</label>
+      <span id="grams-hint" class="hint">Weight on the scale</span>
+      <input
+        type="number"
+        id="grams-input"
+        name="grams"
+        value={gramsPerCup}
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="grams-hint"
+        aria-invalid="false"
+        data-error="grams-error"
+      />
+      <div id="grams-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more grams.
+      </div>
+    </div>
+    {
+      extraUnit && (
+        <div class="field">
+          <label for="extra-input">{extraUnit.label}</label>
+          <span id="extra-hint" class="hint">
+            {extraUnit.note}
+          </span>
+          <input
+            type="number"
+            id="extra-input"
+            name="extra"
+            value="2"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            enterkeyhint="done"
+            aria-describedby="extra-hint"
+            aria-invalid="false"
+            data-error="extra-error"
+          />
+          <div id="extra-error" class="error-msg">
+            <span role="img" aria-label="Error">!</span> Enter 0 or more.
+          </div>
+        </div>
+      )
+    }
+  </div>
+  <p class="converter-result" id="converter-result" aria-hidden="true">
+    1 cup of {ingredient} = {gramsPerCup} g
+  </p>
+  <fieldset class="presets">
+    <legend>Common amounts</legend>
+    {
+      presets.map((preset) => (
+        <button type="button" class="chip" data-cups={preset.cups}>
+          {preset.label}
+        </button>
+      ))
+    }
+  </fieldset>
+</form>
+<div id="converter-announcer" class="visually-hidden" aria-live="polite"></div>
+
+<script is:inline>
+  (function () {
+    var form = document.getElementById('converter-form');
+    if (!form) return;
+    var gramsPerCup = parseFloat(form.dataset.gramsPerCup);
+    var extraGrams = form.dataset.extraGrams
+      ? parseFloat(form.dataset.extraGrams)
+      : null;
+    var ingredient = form.dataset.ingredient;
+    var cupsInput = document.getElementById('cups-input');
+    var gramsInput = document.getElementById('grams-input');
+    var extraInput = document.getElementById('extra-input');
+    var result = document.getElementById('converter-result');
+    var announcer = document.getElementById('converter-announcer');
+    var announceTimer = null;
+    var announcedField = null;
+
+    // One polite live region for the page carries both result updates and
+    // error announcements, debounced so typing does not spam it.
+    function announce(text) {
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      announceTimer = setTimeout(function () {
+        announcer.textContent = text;
+      }, 500);
+    }
+
+    function fmt(value, decimals) {
+      var rounded = Number(value.toFixed(decimals));
+      return String(rounded);
+    }
+
+    function showResult(cups) {
+      var grams = cups * gramsPerCup;
+      var cupsText =
+        cups === 1 ? '1 cup' : fmt(cups, 2) + ' cups';
+      result.textContent =
+        cupsText + ' of ' + ingredient + ' = ' + fmt(grams, 1) + ' g';
+      announce(result.textContent);
+    }
+
+    function showCleared() {
+      result.textContent = 'Enter cups or grams to convert.';
+      announce(result.textContent);
+    }
+
+    function fromCups() {
+      var cups = parseFloat(cupsInput.value);
+      if (cupsInput.value === '' || isNaN(cups) || cups < 0) {
+        if (cupsInput.value === '') {
+          gramsInput.value = '';
+          if (extraInput) extraInput.value = '';
+          showCleared();
+        }
+        return;
+      }
+      gramsInput.value = fmt(cups * gramsPerCup, 1);
+      if (extraInput && extraGrams)
+        extraInput.value = fmt((cups * gramsPerCup) / extraGrams, 2);
+      showResult(cups);
+    }
+
+    function fromGrams() {
+      var grams = parseFloat(gramsInput.value);
+      if (gramsInput.value === '' || isNaN(grams) || grams < 0) {
+        if (gramsInput.value === '') {
+          cupsInput.value = '';
+          if (extraInput) extraInput.value = '';
+          showCleared();
+        }
+        return;
+      }
+      var cups = grams / gramsPerCup;
+      cupsInput.value = fmt(cups, 2);
+      if (extraInput && extraGrams)
+        extraInput.value = fmt(grams / extraGrams, 2);
+      showResult(cups);
+    }
+
+    function fromExtra() {
+      if (!extraInput || !extraGrams) return;
+      var units = parseFloat(extraInput.value);
+      if (extraInput.value === '' || isNaN(units) || units < 0) {
+        if (extraInput.value === '') {
+          cupsInput.value = '';
+          gramsInput.value = '';
+          showCleared();
+        }
+        return;
+      }
+      var grams = units * extraGrams;
+      var cups = grams / gramsPerCup;
+      gramsInput.value = fmt(grams, 1);
+      cupsInput.value = fmt(cups, 2);
+      showResult(cups);
+    }
+
+    cupsInput.addEventListener('input', fromCups);
+    gramsInput.addEventListener('input', fromGrams);
+    if (extraInput) extraInput.addEventListener('input', fromExtra);
+
+    form.querySelectorAll('.chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        cupsInput.value = chip.dataset.cups;
+        fromCups();
+        cupsInput.focus();
+      });
+    });
+
+    // No server: the conversion is live, so Enter must not submit.
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+    });
+
+    // Keep aria-invalid in sync with the CSS :user-invalid state, and
+    // announce errors through the one polite live region. Adapted from
+    // the validate-input-after-interaction guide.
+    function linkError(el, shown) {
+      var errorId = el.dataset.error;
+      if (!errorId) return;
+      var ids = (el.getAttribute('aria-describedby') || '')
+        .split(/\s+/)
+        .filter(function (id) {
+          return id && id !== errorId;
+        });
+      if (shown) ids.push(errorId);
+      if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
+      else el.removeAttribute('aria-describedby');
+    }
+
+    function spokenText(node) {
+      var copy = node.cloneNode(true);
+      copy.querySelectorAll('[aria-hidden="true"]').forEach(function (n) {
+        n.remove();
+      });
+      copy
+        .querySelectorAll('[role="img"][aria-label]')
+        .forEach(function (n) {
+          n.replaceWith(n.getAttribute('aria-label') + ': ');
+        });
+      return copy.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    var flagged = new WeakSet();
+    var announced = new WeakSet();
+    function syncAria(el, doAnnounce) {
+      if (!el.matches || !el.matches('input, select, textarea')) return;
+      var invalid = el.matches(':user-invalid');
+      if (invalid) {
+        if (doAnnounce && !announced.has(el)) {
+          var error = document.getElementById(el.dataset.error);
+          if (error) {
+            var label = el.labels && el.labels[0]
+              ? spokenText(el.labels[0]) + ': '
+              : '';
+            announcedField = el;
+            announce(label + spokenText(error));
+          }
+          announced.add(el);
+        }
+        el.setAttribute('aria-invalid', 'true');
+        linkError(el, true);
+        flagged.add(el);
+      } else if (
+        flagged.has(el) ||
+        el.getAttribute('aria-invalid') !== 'true'
+      ) {
+        el.setAttribute('aria-invalid', 'false');
+        linkError(el, false);
+        flagged.delete(el);
+        announced.delete(el);
+        if (announcedField === el) {
+          clearTimeout(announceTimer);
+          announcer.textContent = '';
+        }
+      }
+    }
+
+    form
+      .querySelectorAll('input, select, textarea')
+      .forEach(function (el) {
+        syncAria(el);
+      });
+    form.addEventListener(
+      'blur',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener('input', function (e) {
+      if (e.target.hasAttribute('aria-invalid')) syncAria(e.target);
+    });
+    form.addEventListener(
+      'change',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener(
+      'invalid',
+      function (e) {
+        announced.add(e.target);
+        syncAria(e.target);
+      },
+      true,
+    );
+  })();
+</script>

@@ -1,0 +1,290 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import WeightConverter from '../../components/WeightConverter.astro';
+
+export async function getStaticPaths() {
+  const variations = await getCollection(
+    'variations',
+    (entry) => entry.data.engine === 'ingredient-weight-converter',
+  );
+  const engines = await getCollection(
+    'engines',
+    (entry) => entry.data.slug === 'ingredient-weight-converter',
+  );
+  const engine = engines[0];
+  return variations.map((variation) => ({
+    params: { variation: variation.data.slug },
+    props: { variation, siblings: variations, engine },
+  }));
+}
+
+const { variation, siblings, engine } = Astro.props;
+const data = variation.data;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const engineUrl = `${base}/ingredient-weight-converter/`;
+const pageUrl = `${engineUrl}${data.slug}/`;
+const canonicalUrl = `https://kitchenwayfinder.com${pageUrl}`;
+
+// Reference table: computed from the same grams-per-cup the calculator
+// uses, so the table and the tool can never disagree.
+const tableRows = [
+  { label: '1 tablespoon', cups: 1 / 16 },
+  { label: '¼ cup', cups: 0.25 },
+  { label: '⅓ cup', cups: 1 / 3 },
+  { label: '½ cup', cups: 0.5 },
+  { label: '⅔ cup', cups: 2 / 3 },
+  { label: '¾ cup', cups: 0.75 },
+  { label: '1 cup', cups: 1 },
+  { label: '1½ cups', cups: 1.5 },
+  { label: '2 cups', cups: 2 },
+  { label: '3 cups', cups: 3 },
+  { label: '4 cups', cups: 4 },
+];
+const gramsFor = (cups: number) => Math.round(cups * data.gramsPerCup);
+const ouncesFor = (cups: number) =>
+  parseFloat((cups * data.ouncesPerCup).toFixed(1));
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': ['SoftwareApplication', 'WebApplication'],
+      name: data.title,
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'Web',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      browserRequirements: 'Requires JavaScript for the live converter',
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: data.faqs.map((faq) => ({
+        '@type': 'Question',
+        name: faq.question,
+        acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+      })),
+    },
+    {
+      '@type': 'HowTo',
+      name: `How to measure ${data.name.toLowerCase()}`,
+      step: data.howToSteps.map((step) => ({
+        '@type': 'HowToStep',
+        name: step.name,
+        text: step.text,
+      })),
+    },
+    {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Home',
+          item: 'https://kitchenwayfinder.com/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Tools',
+          item: 'https://kitchenwayfinder.com/tools/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
+          name: engine.data.name,
+          item: `https://kitchenwayfinder.com${engineUrl}`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 4,
+          name: data.name,
+          item: canonicalUrl,
+        },
+      ],
+    },
+    {
+      '@type': 'WebPage',
+      name: data.title,
+      url: canonicalUrl,
+      author: { '@type': 'Person', name: 'Felicity Vance' },
+      dateModified: data.dateModified,
+    },
+  ],
+};
+---
+
+<BaseLayout
+  title={data.title}
+  description={data.description}
+  canonicalPath={`/ingredient-weight-converter/${data.slug}/`}
+>
+  <script
+    slot="head"
+    type="application/ld+json"
+    set:html={JSON.stringify(structuredData)}
+  />
+  <div class="wrap tool-page">
+    <nav aria-label="Breadcrumb" class="breadcrumbs">
+      <ol>
+        <li><a href="https://kitchenwayfinder.com/">Home</a></li>
+        <li><a href={`${base}/`}>Tools</a></li>
+        <li><a href={engineUrl}>{engine.data.name}</a></li>
+        <li aria-current="page">{data.name}</li>
+      </ol>
+    </nav>
+
+    <h1>{data.title}</h1>
+    <p class="lede">
+      One cup of {data.name.toLowerCase()} weighs {data.gramsPerCup} grams, {
+        data.measureNote
+      }. {data.sourceNote}
+    </p>
+
+    <WeightConverter
+      name={data.name}
+      gramsPerCup={data.gramsPerCup}
+      presets={data.presets}
+      extraUnit={data.extraUnit}
+    />
+
+    <section aria-labelledby="table-heading">
+      <h2 id="table-heading">{data.name} by the cup</h2>
+      <div
+        class="table-wrapper"
+        tabindex="0"
+        role="region"
+        aria-labelledby="table-caption"
+      >
+        <table>
+          <caption id="table-caption">
+            {data.name} — cups to grams and ounces
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Amount</th>
+              <th scope="col">Grams</th>
+              <th scope="col">Ounces</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              tableRows.map((row) => (
+                <tr>
+                  <th scope="row">{row.label}</th>
+                  <td>{gramsFor(row.cups)} g</td>
+                  <td>{ouncesFor(row.cups)} oz</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <p>
+        One tablespoon is {data.gramsPerTablespoon} g. {data.sourceNote}
+      </p>
+    </section>
+
+    <section aria-labelledby="howto-heading">
+      <h2 id="howto-heading">How to measure {data.name.toLowerCase()}</h2>
+      <ol class="steps">
+        {
+          data.howToSteps.map((step) => (
+            <li>
+              <strong>{step.name}.</strong> {step.text}
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+
+    <section aria-labelledby="tutorial-heading">
+      <h2 id="tutorial-heading">
+        About converting {data.name.toLowerCase()}
+      </h2>
+      {data.tutorial.map((paragraph) => <p>{paragraph}</p>)}
+    </section>
+
+    <section aria-labelledby="formula-heading">
+      <h2 id="formula-heading">The formula</h2>
+      <p class="formula">{data.formula.text}</p>
+      <dl class="formula-parts">
+        {
+          data.formula.parts.map((part) => (
+            <div>
+              <dt>{part.term}</dt>
+              <dd>{part.meaning}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </section>
+
+    <section aria-labelledby="examples-heading">
+      <h2 id="examples-heading">Worked examples</h2>
+      {
+        data.examples.map((example) => (
+          <div class="example">
+            <h3>{example.title}</h3>
+            <ol>
+              {example.steps.map((step) => <li>{step}</li>)}
+            </ol>
+            <p class="example-result">{example.result}</p>
+          </div>
+        ))
+      }
+    </section>
+
+    <section aria-labelledby="faq-heading">
+      <h2 id="faq-heading">
+        Questions about {data.name.toLowerCase()}
+      </h2>
+      {
+        data.faqs.map((faq) => (
+          <div class="faq">
+            <h3>{faq.question}</h3>
+            <p>{faq.answer}</p>
+          </div>
+        ))
+      }
+    </section>
+
+    <aside class="felicity-note" aria-label="A note from Felicity">
+      <p>{data.felicityNote}</p>
+      <p class="felicity-signoff">— Felicity</p>
+    </aside>
+
+    <section aria-labelledby="reading-heading">
+      <h2 id="reading-heading">Keep reading</h2>
+      <ul>
+        {
+          data.links.map((link) => (
+            <li>
+              <a href={link.url}>{link.title}</a>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <nav aria-label="More converters" class="more-converters">
+      <h2>More converters</h2>
+      <ul>
+        {
+          siblings
+            .filter((sibling) => sibling.data.slug !== data.slug)
+            .map((sibling) => (
+              <li>
+                <a href={`${engineUrl}${sibling.data.slug}/`}>
+                  {sibling.data.title}
+                </a>{' '}
+                — 1 cup = {sibling.data.gramsPerCup} g
+              </li>
+            ))
+        }
+      </ul>
+      <p>
+        <a href={engineUrl}>All {engine.data.name} converters</a>
+      </p>
+    </nav>
+  </div>
+</BaseLayout>

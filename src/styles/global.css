@@ -172,3 +172,369 @@ main {
 .site-footer p {
   margin-block: 0 0.25rem;
 }
+
+/* ---- Tool pages ---- */
+
+/* Visually hidden but kept in the accessibility tree (MWG accessibility). */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* Tool pages read at a narrower measure than the directory. */
+.tool-page {
+  max-inline-size: 60rem;
+}
+
+.tool-page section {
+  margin-block: 2rem;
+}
+
+.tool-page p,
+.tool-page li {
+  text-wrap: pretty;
+}
+
+.tool-page h3 {
+  font-size: 1.15rem;
+  margin-block: 1.5rem 0.5rem;
+}
+
+/* Breadcrumbs: a plain ordered list, separators via CSS. */
+.breadcrumbs {
+  margin-block-end: 1.5rem;
+  font-size: 0.9375rem;
+}
+
+.breadcrumbs ol {
+  display: flex;
+  flex-flow: row wrap;
+  gap: 0.25rem 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.breadcrumbs li + li::before {
+  content: "/";
+  margin-inline-end: 0.5rem;
+  color: var(--sage);
+}
+
+.breadcrumbs a {
+  color: var(--charcoal);
+}
+
+.breadcrumbs [aria-current="page"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ---- Converter ---- */
+
+.converter {
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  padding: 1.5rem;
+  margin-block: 1.5rem 2rem;
+  background: #fffefa;
+}
+
+.converter h2 {
+  margin-block-end: 1rem;
+}
+
+.converter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem 1.5rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field .hint {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--charcoal);
+}
+
+/* font-size stays at least 1rem so iOS does not zoom on focus (MWG forms). */
+.field input {
+  font: inherit;
+  font-size: max(1rem, 1em);
+  min-block-size: 3rem;
+  inline-size: 100%;
+  max-inline-size: 16rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #767676;
+  border-radius: 0.25rem;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.field input:focus-visible {
+  outline: 3px solid var(--tomato);
+  outline-offset: 2px;
+}
+
+/* Error state only after the user has interacted (MWG
+   validate-input-after-interaction). Never :invalid alone. */
+.field input:user-invalid {
+  border-color: var(--tomato);
+  background-color: #fdf0ee;
+}
+
+.error-msg {
+  display: none;
+  font-size: 0.875rem;
+  color: var(--tomato);
+  font-weight: 600;
+}
+
+.field input:user-invalid + .error-msg {
+  display: block;
+}
+
+.error-msg [role="img"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  border-radius: 50%;
+  background: var(--tomato);
+  color: var(--paper);
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-inline-end: 0.25rem;
+}
+
+.converter-result {
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin-block: 1.25rem 0;
+}
+
+.presets {
+  border: 0;
+  padding: 0;
+  margin: 1.25rem 0 0;
+}
+
+.presets legend {
+  font-weight: 600;
+  margin-block-end: 0.5rem;
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.9375rem;
+  min-block-size: 2.75rem;
+  padding: 0.5rem 0.9rem;
+  margin: 0 0.5rem 0.5rem 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--sage);
+}
+
+/* Touch targets: 44px on coarse pointers (MWG form-factor-adaptation). */
+@media (pointer: coarse) {
+  .chip {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+  }
+
+  .field input {
+    min-block-size: 3.25rem;
+  }
+}
+
+/* ---- Reference table (MWG responsive-table) ---- */
+
+.table-wrapper {
+  overflow: auto;
+  max-inline-size: 100%;
+  container-type: inline-size;
+}
+
+.table-wrapper table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-wrapper caption {
+  text-align: start;
+  font-weight: 600;
+  padding-block-end: 0.5rem;
+}
+
+.table-wrapper th,
+.table-wrapper td {
+  padding: 0.5rem 0.75rem;
+  text-align: start;
+  border-block-end: 1px solid var(--line);
+}
+
+.table-wrapper thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--paper);
+  border-block-end: 2px solid var(--charcoal);
+}
+
+.table-wrapper tbody th {
+  font-weight: 600;
+}
+
+.table-wrapper tbody tr:nth-child(even) {
+  background: #faf6ec;
+}
+
+/* Stacked cards under 600px of container width: the thead is hidden and
+   each cell carries its column label. */
+@container (width < 600px) {
+  .table-wrapper table,
+  .table-wrapper thead,
+  .table-wrapper tbody,
+  .table-wrapper tr,
+  .table-wrapper th,
+  .table-wrapper td {
+    display: block;
+  }
+
+  .table-wrapper thead {
+    display: none;
+  }
+
+  .table-wrapper tr {
+    margin-block-end: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 0.25rem;
+  }
+
+  .table-wrapper tbody th {
+    position: sticky;
+    inset-block-start: 0;
+    background: #faf6ec;
+  }
+
+  .table-wrapper td:nth-child(2)::before {
+    content: "Grams: ";
+    font-weight: 600;
+  }
+
+  .table-wrapper td:nth-child(3)::before {
+    content: "Ounces: ";
+    font-weight: 600;
+  }
+}
+
+/* ---- Tutorial, formula, examples, FAQs ---- */
+
+.steps li,
+.example ol li {
+  margin-block-end: 0.5rem;
+}
+
+.formula {
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.formula-parts {
+  margin: 0;
+}
+
+.formula-parts div {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr;
+  gap: 0.25rem 1rem;
+  padding-block: 0.5rem;
+  border-block-end: 1px solid var(--line);
+}
+
+.formula-parts dt {
+  font-weight: 700;
+}
+
+.formula-parts dd {
+  margin: 0;
+}
+
+.example {
+  border-block-start: 1px solid var(--line);
+  padding-block-start: 1rem;
+}
+
+.example-result {
+  font-weight: 600;
+}
+
+.faq h3 {
+  margin-block-end: 0.25rem;
+}
+
+.felicity-note {
+  border-inline-start: 3px solid var(--sage);
+  padding-inline-start: 1rem;
+  margin-block: 2rem;
+  font-family: var(--serif);
+  font-size: 1.125rem;
+}
+
+.felicity-signoff {
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  color: var(--charcoal);
+}
+
+.converter-list {
+  list-style: none;
+  padding: 0;
+}
+
+.converter-list li {
+  display: flex;
+  flex-flow: row wrap;
+  gap: 0.25rem 1rem;
+  padding-block: 0.6rem;
+  border-block-end: 1px solid var(--line);
+}
+
+.converter-list a {
+  font-weight: 600;
+  min-inline-size: 14rem;
+}
+
+.more-converters ul {
+  padding-inline-start: 1.25rem;
+}
+
+.more-converters li {
+  margin-block-end: 0.5rem;
+}

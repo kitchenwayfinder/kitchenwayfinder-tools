@@ -8,7 +8,8 @@ interface Props {
 }
 
 const { title, description, canonicalPath = '/' } = Astro.props;
-// BASE_URL is '/tools' (no trailing slash); the tools home link needs it.
+// BASE_URL is '/tools/' WITH a trailing slash at build time. Strip it
+// before joining paths, or links come out '/tools//...'.
 const base = import.meta.env.BASE_URL;
 const toolsHome = base.endsWith('/') ? base : `${base}/`;
 const canonical =

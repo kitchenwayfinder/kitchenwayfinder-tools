@@ -2,13 +2,17 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 // The tools directory: all 61 engines from the locked taxonomy, grouped by
-// category. Engine names are plain text for now; each becomes a link to its
-// tool page as the engine ships.
+// category. A shipped engine is an object with a link; the rest are plain
+// text until they ship.
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const categories = [
   {
     name: 'Conversions & Measurements',
     engines: [
-      'Ingredient Weight Converter',
+      {
+        name: 'Ingredient Weight Converter',
+        href: `${base}/ingredient-weight-converter/`,
+      },
       'Volume Converter',
       'Weight Converter',
       'Oven Temperature Converter',
@@ -174,7 +178,13 @@ const structuredData = {
             <h2>{category.name}</h2>
             <ul>
               {category.engines.map((engine) => (
-                <li>{engine}</li>
+                <li>
+                  {typeof engine === 'string' ? (
+                    engine
+                  ) : (
+                    <a href={engine.href}>{engine.name}</a>
+                  )}
+                </li>
               ))}
             </ul>
           </section>
