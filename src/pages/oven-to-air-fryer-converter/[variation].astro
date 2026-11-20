@@ -27,9 +27,10 @@ const pageUrl = `${engineUrl}${data.slug}/`;
 const canonicalUrl = `https://kitchenwayfinder.com${pageUrl}`;
 
 // Every variation in this engine carries its own reference table and
-// calculator data; the table rows are the same -25F / x0.8 / check-at
-// x0.7 conversion the component computes, so the table and the tool
-// can never disagree.
+// calculator data; the table rows are the same one-or-other conversion
+// the component computes (25F lower with the full time, or the same
+// temperature and check about a quarter sooner), so the table and the
+// tool can never disagree.
 const table = data.table!;
 const dish = data.name.toLowerCase();
 const typicalTempF = data.data!.typicalTempF as number;
@@ -181,8 +182,10 @@ const structuredData = {
         </table>
       </div>
       <p>
-        Times are starting points. The check-at column is when to open
-        the basket, look, and check the temperature.
+        Times are starting points, rounded to the nearest minute. Pick
+        one column, not both: the lower-temperature column keeps the
+        full oven time, and the shorter-time column keeps the oven
+        temperature and checks about a quarter sooner.
       </p>
     </section>
 

@@ -433,6 +433,44 @@ main {
   margin: 1.25rem 0 0;
 }
 
+/* Mode choice (oven-to-air-fryer converter): two radios, one change
+   or the other, never both. Labels carry the tap target. */
+.mode-choice {
+  border: 0;
+  padding: 0;
+  margin: 1.25rem 0 0;
+}
+
+.mode-choice legend {
+  font-weight: 600;
+}
+
+.mode-choice .hint {
+  font-size: 0.875rem;
+  color: var(--charcoal);
+  margin: 0.25rem 0 0.5rem;
+}
+
+.mode-choice label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 2.75rem;
+  cursor: pointer;
+}
+
+.mode-choice input[type="radio"] {
+  accent-color: var(--tomato);
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  flex: none;
+}
+
+.mode-choice input[type="radio"]:focus-visible {
+  outline: 3px solid var(--tomato);
+  outline-offset: 2px;
+}
+
 .presets legend {
   font-weight: 600;
   margin-block-end: 0.5rem;
