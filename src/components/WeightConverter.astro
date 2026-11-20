@@ -5,6 +5,9 @@
 // The form also has an explicit Convert submit button (MWG forms: every
 // form gets a submit button with actionable language). It runs the same
 // conversion the live updates perform; it never navigates anywhere.
+// Because the live updates already computed the answer, a Convert click
+// would look dead without visible feedback (Cozy, 2026-11-20) — so the
+// submit handler flashes the result and moves focus to it.
 //
 // Accessibility follows Modern Web Guidance: `forms` (real <form>,
 // labels above inputs, hints above inputs, 48px targets),
@@ -102,7 +105,12 @@ const ingredient = name.toLowerCase();
     }
   </div>
   <button type="submit" class="convert-button">Convert</button>
-  <p class="converter-result" id="converter-result" aria-hidden="true">
+  <!-- tabindex="-1" so a Convert click can move focus here (MWG
+       accessibility: programmatically focusable, not in the tab order).
+       No aria-hidden: a focusable element must never be aria-hidden.
+       The live region still announces typing updates; the result text
+       itself is not a live region, so it is never announced twice. -->
+  <p class="converter-result" id="converter-result" tabindex="-1">
     1 cup of {ingredient} = {gramsPerCup} g
   </p>
   <fieldset class="presets">
@@ -162,6 +170,17 @@ const ingredient = name.toLowerCase();
     function showCleared() {
       result.textContent = 'Enter cups or grams to convert.';
       announce(result.textContent);
+    }
+
+    // Brief highlight on the result after a Convert click: the answer
+    // was already showing (live updates), so the click needs visible
+    // feedback. Removing the class and forcing a reflow restarts the
+    // animation on repeated clicks. Under prefers-reduced-motion the
+    // animation never runs (CSS); the focus move still applies.
+    function flashResult() {
+      result.classList.remove('result-flash');
+      void result.offsetWidth;
+      result.classList.add('result-flash');
     }
 
     function fromCups() {
@@ -241,6 +260,16 @@ const ingredient = name.toLowerCase();
       if (lastEdited === gramsInput) fromGrams();
       else if (lastEdited === extraInput) fromExtra();
       else fromCups();
+      // Visible feedback for the click: flash the result and move focus
+      // to it, so the user sees — and lands on — the answer they just
+      // asked for. Focus announces the result to screen readers, so the
+      // pending live-region announcement is cleared to avoid saying it
+      // twice. On error (above) there is no flash and focus stays on
+      // the invalid field.
+      flashResult();
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      result.focus();
     });
 
     cupsInput.addEventListener('input', function () {

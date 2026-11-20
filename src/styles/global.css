@@ -343,6 +343,36 @@ main {
   font-size: 1.35rem;
   font-weight: 600;
   margin-block: 1.25rem 0;
+  /* Padding lives on the base rule so the flash background never changes
+     the box size (no layout shift on click). */
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+}
+
+/* Visible feedback for a Convert click (MWG motion: opt in to motion
+   only under no-preference, so reduced-motion users get the focus move
+   without the flash). One soft sage fade over a second — far below the
+   three-flashes-per-second limit — ending at the static state. */
+@keyframes result-flash {
+  from {
+    background-color: #eef2e8;
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .converter-result.result-flash {
+    animation: result-flash 1s ease-out;
+  }
+}
+
+/* The result is focused programmatically after a Convert click, so it
+   needs a visible focus indicator, like the inputs. */
+.converter-result:focus {
+  outline: 3px solid var(--tomato);
+  outline-offset: 2px;
 }
 
 /* The explicit Convert action (MWG forms: every form gets a submit
