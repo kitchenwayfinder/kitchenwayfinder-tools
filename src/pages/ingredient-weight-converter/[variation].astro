@@ -106,7 +106,11 @@ const structuredData = {
       '@type': 'WebPage',
       name: data.title,
       url: canonicalUrl,
-      author: { '@type': 'Person', name: 'Felicity Vance' },
+      author: {
+        '@type': 'Person',
+        name: 'Felicity Vance',
+        url: 'https://kitchenwayfinder.com/about/',
+      },
       dateModified: data.dateModified,
     },
   ],
@@ -138,6 +142,9 @@ const structuredData = {
       One cup of {data.name.toLowerCase()} weighs {data.gramsPerCup} grams, {
         data.measureNote
       }. {data.sourceNote}
+    </p>
+    <p class="byline">
+      By <a href="https://kitchenwayfinder.com/about/">Felicity Vance</a>
     </p>
 
     <WeightConverter
@@ -250,7 +257,9 @@ const structuredData = {
 
     <aside class="felicity-note" aria-label="A note from Felicity">
       <p>{data.felicityNote}</p>
-      <p class="felicity-signoff">— Felicity</p>
+      <p class="felicity-signoff">
+        — <a href="https://kitchenwayfinder.com/about/">Felicity</a>
+      </p>
     </aside>
 
     <section aria-labelledby="reading-heading">

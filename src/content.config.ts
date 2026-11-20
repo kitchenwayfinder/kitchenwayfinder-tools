@@ -36,8 +36,10 @@ const variations = defineCollection({
   schema: z.object({
     engine: z.string(),
     name: z.string(),
-    // URL segment under /tools/<engine>/. File name is <engine>-<slug>.json
-    // so variation files stay unique across engines.
+    // URL segment under /tools/<engine>/. Keyword-rich: the slug carries
+    // the target query (e.g. cups-to-grams-butter), per Cozy's pilot
+    // review 2026-11-20. File names stay short
+    // (<engine>-<ingredient>.json); only this field drives the URL.
     slug: z.string(),
     // Meta title WITHOUT the " | Kitchen Wayfinder" suffix the layout adds.
     // Full rendered title must be 50-60 chars, so keep this 30-40 chars. (The suffix is 20 chars.)

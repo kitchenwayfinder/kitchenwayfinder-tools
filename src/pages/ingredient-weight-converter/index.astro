@@ -14,16 +14,16 @@ const variations = await getCollection(
 
 // The plan's launch order, not collection order (which is not guaranteed).
 const order = [
-  'all-purpose-flour',
-  'bread-flour',
-  'whole-wheat-flour',
-  'granulated-sugar',
-  'brown-sugar',
-  'powdered-sugar',
-  'butter',
-  'honey',
-  'cocoa-powder',
-  'rolled-oats',
+  'cups-to-grams-all-purpose-flour',
+  'cups-to-grams-bread-flour',
+  'cups-to-grams-whole-wheat-flour',
+  'cups-to-grams-granulated-sugar',
+  'cups-to-grams-brown-sugar',
+  'cups-to-grams-powdered-sugar',
+  'cups-to-grams-butter',
+  'cups-to-grams-honey',
+  'cups-to-grams-cocoa-powder',
+  'cups-to-grams-rolled-oats',
 ];
 const sorted = [...variations].sort(
   (a, b) => order.indexOf(a.data.slug) - order.indexOf(b.data.slug),
@@ -40,7 +40,11 @@ const structuredData = {
       '@type': 'WebPage',
       name: engine.data.title,
       url: canonicalUrl,
-      author: { '@type': 'Person', name: 'Felicity Vance' },
+      author: {
+        '@type': 'Person',
+        name: 'Felicity Vance',
+        url: 'https://kitchenwayfinder.com/about/',
+      },
       dateModified: '2026-11-20',
     },
     {
@@ -91,6 +95,9 @@ const structuredData = {
 
     <h1>{engine.data.name}</h1>
     <p class="lede">{engine.data.description}</p>
+    <p class="byline">
+      By <a href="https://kitchenwayfinder.com/about/">Felicity Vance</a>
+    </p>
     {engine.data.intro.map((paragraph) => <p>{paragraph}</p>)}
 
     <section aria-labelledby="converters-heading">

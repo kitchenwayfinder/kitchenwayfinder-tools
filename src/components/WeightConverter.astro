@@ -2,9 +2,12 @@
 // Cups ↔ grams converter for one ingredient. The result updates as the
 // user types; the initial 1-cup answer is server-rendered so the page
 // still answers without JavaScript (the reference table below does too).
+// The form also has an explicit Convert submit button (MWG forms: every
+// form gets a submit button with actionable language). It runs the same
+// conversion the live updates perform; it never navigates anywhere.
 //
 // Accessibility follows Modern Web Guidance: `forms` (real <form>,
-// labels above inputs, hints above inputs, 48px targets), 
+// labels above inputs, hints above inputs, 48px targets),
 // `validate-input-after-interaction` (:user-invalid styling, error text
 // revealed only after interaction), `accessible-error-announcement`
 // (aria-invalid synced with :user-invalid, one polite live region).
@@ -23,6 +26,7 @@ const ingredient = name.toLowerCase();
   id="converter-form"
   class="converter"
   aria-labelledby="converter-heading"
+  novalidate
   data-grams-per-cup={gramsPerCup}
   data-ingredient={ingredient}
   data-extra-grams={extraUnit ? extraUnit.grams : undefined}
@@ -97,6 +101,7 @@ const ingredient = name.toLowerCase();
       )
     }
   </div>
+  <button type="submit" class="convert-button">Convert</button>
   <p class="converter-result" id="converter-result" aria-hidden="true">
     1 cup of {ingredient} = {gramsPerCup} g
   </p>
@@ -210,21 +215,55 @@ const ingredient = name.toLowerCase();
       showResult(cups);
     }
 
-    cupsInput.addEventListener('input', fromCups);
-    gramsInput.addEventListener('input', fromGrams);
-    if (extraInput) extraInput.addEventListener('input', fromExtra);
+    // The Convert button (and Enter) runs the conversion from the field
+    // the user last edited. Live updates already keep the three fields
+    // in sync, so converting from the last-edited field is always the
+    // value the user means. No server: the submit never navigates (the
+    // form carries novalidate, so native bubbles never appear and errors
+    // stay inline). On an invalid field, focus moves to the first error
+    // (MWG forms: submit is the final gatekeeper).
+    var lastEdited = cupsInput;
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var fields = [cupsInput, gramsInput];
+      if (extraInput) fields.push(extraInput);
+      var firstInvalid = null;
+      fields.forEach(function (el) {
+        syncAria(el, true);
+        if (!firstInvalid && el.getAttribute('aria-invalid') === 'true')
+          firstInvalid = el;
+      });
+      if (firstInvalid) {
+        firstInvalid.focus();
+        return;
+      }
+      if (lastEdited === gramsInput) fromGrams();
+      else if (lastEdited === extraInput) fromExtra();
+      else fromCups();
+    });
+
+    cupsInput.addEventListener('input', function () {
+      lastEdited = cupsInput;
+      fromCups();
+    });
+    gramsInput.addEventListener('input', function () {
+      lastEdited = gramsInput;
+      fromGrams();
+    });
+    if (extraInput)
+      extraInput.addEventListener('input', function () {
+        lastEdited = extraInput;
+        fromExtra();
+      });
 
     form.querySelectorAll('.chip').forEach(function (chip) {
       chip.addEventListener('click', function () {
         cupsInput.value = chip.dataset.cups;
+        lastEdited = cupsInput;
         fromCups();
         cupsInput.focus();
       });
-    });
-
-    // No server: the conversion is live, so Enter must not submit.
-    form.addEventListener('submit', function (event) {
-      event.preventDefault();
     });
 
     // Keep aria-invalid in sync with the CSS :user-invalid state, and
