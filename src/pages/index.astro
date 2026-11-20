@@ -1,0 +1,185 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+// The tools directory: all 61 engines from the locked taxonomy, grouped by
+// category. Engine names are plain text for now; each becomes a link to its
+// tool page as the engine ships.
+const categories = [
+  {
+    name: 'Conversions & Measurements',
+    engines: [
+      'Ingredient Weight Converter',
+      'Volume Converter',
+      'Weight Converter',
+      'Oven Temperature Converter',
+      'Yeast Converter',
+      'Fresh-to-Dried Herb Converter',
+      'Garlic Converter',
+      'Oil-to-Butter Converter',
+      'Dry-to-Cooked Converter',
+      'Can & Jar Size Converter',
+    ],
+  },
+  {
+    name: 'Recipe Scaling & Planning',
+    engines: [
+      'Recipe Scaler',
+      'Ingredient Substitution Finder',
+      'Pan Size Converter',
+      'Serving Planner',
+      'Rice & Grain Cooking Calculator',
+    ],
+  },
+  {
+    name: 'Baking, Dough & Desserts',
+    engines: [
+      "Baker's Percentage Calculator",
+      'Sourdough Calculator',
+      'Pizza Dough Calculator',
+      'Bread Loaf Calculator',
+      'Cake Serving Calculator',
+      'Self-Rising Flour Calculator',
+      'Chocolate Calculator',
+      'Frosting & Icing Calculator',
+      'Pancake & Waffle Batter Calculator',
+      'Pasta Dough Calculator',
+      'Ice Cream Base Calculator',
+      'Altitude Baking Adjuster',
+    ],
+  },
+  {
+    name: 'Coffee & Tea',
+    engines: [
+      'Coffee Ratio Calculator',
+      'Cold Brew Calculator',
+      'Espresso Calculator',
+      'Tea Brewing Calculator',
+    ],
+  },
+  {
+    name: 'Meat, Poultry & Roasting',
+    engines: [
+      'Roast Timing Calculator',
+      'Turkey Cooking Time Calculator',
+      'Steak Cook Time Calculator',
+      'Brine Calculator',
+      'Meat Temperature & Rest Finder',
+      'Marinade Calculator',
+      'Vegetable Roasting Time Finder',
+    ],
+  },
+  {
+    name: 'Holiday & Hosting',
+    engines: ['Thanksgiving Dinner Planner', 'Gravy Calculator'],
+  },
+  {
+    name: 'Appliance Converters & Timers',
+    engines: [
+      'Oven-to-Air-Fryer Converter',
+      'Air-Fryer Cooking Time Finder',
+      'Slow Cooker Converter',
+      'Pressure Cooker Converter',
+      'Convection Oven Converter',
+      'Sous Vide Time & Temperature Calculator',
+      'Deep-Fry Calculator',
+    ],
+  },
+  {
+    name: 'Food Safety & Storage',
+    engines: [
+      'Egg Boiling Calculator',
+      'Food Storage Life Finder',
+      'Thawing Time Calculator',
+    ],
+  },
+  {
+    name: 'Party & Serving',
+    engines: [
+      'Pizza Party Calculator',
+      'BBQ Party Calculator',
+      'Taco Bar Calculator',
+      'Party Drinks & Ice Calculator',
+    ],
+  },
+  {
+    name: 'Outdoor & Grilling',
+    engines: [
+      'Smoking Time Calculator',
+      'Charcoal & Fuel Calculator',
+      'Grilling Time Finder',
+    ],
+  },
+  {
+    name: 'Preserving & Fermenting',
+    engines: [
+      'Canning Time Calculator',
+      'Pickling & Fermentation Brine Calculator',
+      'Curing Calculator',
+      'Dehydrator Time Calculator',
+    ],
+  },
+];
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebPage',
+      name: 'Kitchen Tools',
+      url: 'https://kitchenwayfinder.com/tools/',
+      author: { '@type': 'Person', name: 'Felicity Vance' },
+    },
+    {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Home',
+          item: 'https://kitchenwayfinder.com/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Tools',
+          item: 'https://kitchenwayfinder.com/tools/',
+        },
+      ],
+    },
+  ],
+};
+---
+
+<BaseLayout
+  title="Kitchen Tools"
+  description="Kitchen calculators from Kitchen Wayfinder: cups to grams, oven to air fryer, recipe scaling, turkey timing, and more. The answer first, then the working."
+>
+  <script
+    slot="head"
+    type="application/ld+json"
+    set:html={JSON.stringify(structuredData)}
+  />
+  <div class="wrap">
+    <h1>Kitchen tools</h1>
+    <p class="lede">
+      The calculators I reach for in my own kitchen — cups to grams when I am
+      baking, oven to air fryer when I am converting a recipe, how long the
+      turkey needs at Thanksgiving. Each one gives you the answer first, then
+      shows its working.
+    </p>
+    <div class="category-grid">
+      {
+        categories.map((category) => (
+          <section class="category-card">
+            <h2>{category.name}</h2>
+            <ul>
+              {category.engines.map((engine) => (
+                <li>{engine}</li>
+              ))}
+            </ul>
+          </section>
+        ))
+      }
+    </div>
+  </div>
+</BaseLayout>
