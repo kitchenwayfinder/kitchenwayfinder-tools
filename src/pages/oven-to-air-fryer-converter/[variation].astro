@@ -172,8 +172,8 @@ const structuredData = {
               table.rows.map((row) => (
                 <tr>
                   <th scope="row">{row[0]}</th>
-                  {row.slice(1).map((cell) => (
-                    <td>{cell}</td>
+                  {row.slice(1).map((cell, index) => (
+                    <td data-label={table.columns[index + 1]}>{cell}</td>
                   ))}
                 </tr>
               ))

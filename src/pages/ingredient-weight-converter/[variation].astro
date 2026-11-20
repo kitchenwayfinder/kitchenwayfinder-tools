@@ -27,7 +27,9 @@ const pageUrl = `${engineUrl}${data.slug}/`;
 const canonicalUrl = `https://kitchenwayfinder.com${pageUrl}`;
 
 // Reference table: computed from the same grams-per-cup the calculator
-// uses, so the table and the tool can never disagree.
+// uses, so the table and the tool can never disagree. The header and the
+// mobile stacked labels (data-label) both come from tableColumns.
+const tableColumns = ['Amount', 'Grams', 'Ounces'];
 const tableRows = [
   { label: '1 tablespoon', cups: 1 / 16 },
   { label: '¼ cup', cups: 0.25 },
@@ -168,9 +170,11 @@ const structuredData = {
           </caption>
           <thead>
             <tr>
-              <th scope="col">Amount</th>
-              <th scope="col">Grams</th>
-              <th scope="col">Ounces</th>
+              {
+                tableColumns.map((column) => (
+                  <th scope="col">{column}</th>
+                ))
+              }
             </tr>
           </thead>
           <tbody>
@@ -178,8 +182,12 @@ const structuredData = {
               tableRows.map((row) => (
                 <tr>
                   <th scope="row">{row.label}</th>
-                  <td>{gramsFor(row.cups)} g</td>
-                  <td>{ouncesFor(row.cups)} oz</td>
+                  <td data-label={tableColumns[1]}>
+                    {gramsFor(row.cups)} g
+                  </td>
+                  <td data-label={tableColumns[2]}>
+                    {ouncesFor(row.cups)} oz
+                  </td>
                 </tr>
               ))
             }

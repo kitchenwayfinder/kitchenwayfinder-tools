@@ -582,13 +582,14 @@ main {
     background: #faf6ec;
   }
 
-  .table-wrapper td:nth-child(2)::before {
-    content: "Grams: ";
-    font-weight: 600;
-  }
-
-  .table-wrapper td:nth-child(3)::before {
-    content: "Ounces: ";
+  /* Each cell carries its own column label in a data-label attribute,
+     set by the template from the same data that renders the header —
+     so every engine's table shows its real column names on mobile.
+     Never hard-code per-engine labels here (the old "Grams:"/"Ounces:"
+     rules labelled every other engine's columns wrong). Scoped to td
+     only: the tbody th row headers are already the row label. */
+  .table-wrapper td::before {
+    content: attr(data-label) ": ";
     font-weight: 600;
   }
 }
