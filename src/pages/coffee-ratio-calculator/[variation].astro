@@ -1,0 +1,295 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import CoffeeRatioCalculator from '../../components/CoffeeRatioCalculator.astro';
+
+export async function getStaticPaths() {
+  const variations = await getCollection(
+    'variations',
+    (entry) => entry.data.engine === 'coffee-ratio-calculator',
+  );
+  const engines = await getCollection(
+    'engines',
+    (entry) => entry.data.slug === 'coffee-ratio-calculator',
+  );
+  const engine = engines[0];
+  return variations.map((variation) => ({
+    params: { variation: variation.data.slug },
+    props: { variation, siblings: variations, engine },
+  }));
+}
+
+const { variation, siblings, engine } = Astro.props;
+const data = variation.data;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const engineUrl = `${base}/coffee-ratio-calculator/`;
+const pageUrl = `${engineUrl}${data.slug}/`;
+const canonicalUrl = `https://kitchenwayfinder.com${pageUrl}`;
+
+// Engine-specific calculator data (ratios, method notes, headings).
+// Every coffee variation carries these fields in `data`.
+const calc = data.data as unknown as {
+  ratio: number;
+  ratioLabel: string;
+  liquid: 'water' | 'milk';
+  retention: number;
+  defaultCoffee: number;
+  coffeeLabel: string;
+  howToHeading: string;
+  aboutHeading: string;
+  tableNote: string;
+};
+const table = data.table!;
+const presets = data.presets as {
+  label: string;
+  coffee: number;
+  water?: number;
+  milk?: number;
+}[];
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': ['SoftwareApplication', 'WebApplication'],
+      name: data.title,
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'Web',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      browserRequirements: 'Requires JavaScript for the live converter',
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: data.faqs.map((faq) => ({
+        '@type': 'Question',
+        name: faq.question,
+        acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+      })),
+    },
+    {
+      '@type': 'HowTo',
+      name: calc.howToHeading,
+      step: data.howToSteps.map((step) => ({
+        '@type': 'HowToStep',
+        name: step.name,
+        text: step.text,
+      })),
+    },
+    {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Home',
+          item: 'https://kitchenwayfinder.com/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Tools',
+          item: 'https://kitchenwayfinder.com/tools/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
+          name: engine.data.name,
+          item: `https://kitchenwayfinder.com${engineUrl}`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 4,
+          name: data.name,
+          item: canonicalUrl,
+        },
+      ],
+    },
+    {
+      '@type': 'WebPage',
+      name: data.title,
+      url: canonicalUrl,
+      author: {
+        '@type': 'Person',
+        name: 'Felicity Vance',
+        url: 'https://kitchenwayfinder.com/about/',
+      },
+      dateModified: data.dateModified,
+    },
+  ],
+};
+---
+
+<BaseLayout
+  title={data.title}
+  description={data.description}
+  canonicalPath={`/coffee-ratio-calculator/${data.slug}/`}
+>
+  <script
+    slot="head"
+    type="application/ld+json"
+    set:html={JSON.stringify(structuredData)}
+  />
+  <div class="wrap tool-page">
+    <nav aria-label="Breadcrumb" class="breadcrumbs">
+      <ol>
+        <li><a href="https://kitchenwayfinder.com/">Home</a></li>
+        <li><a href={`${base}/`}>Tools</a></li>
+        <li><a href={engineUrl}>{engine.data.name}</a></li>
+        <li aria-current="page">{data.name}</li>
+      </ol>
+    </nav>
+
+    <h1>{data.title}</h1>
+    <p class="lede">{data.lede}</p>
+    <p class="byline">
+      By <a href="https://kitchenwayfinder.com/about/">Felicity Vance</a>
+    </p>
+
+    <CoffeeRatioCalculator
+      name={data.name}
+      coffeeLabel={calc.coffeeLabel}
+      liquidLabel={calc.liquid === 'milk' ? 'Milk' : 'Water'}
+      ratio={calc.ratio}
+      ratioLabel={calc.ratioLabel}
+      liquid={calc.liquid}
+      retention={calc.retention}
+      defaultCoffee={calc.defaultCoffee}
+      presets={presets}
+    />
+
+    <section aria-labelledby="table-heading">
+      <h2 id="table-heading">{data.name} by serving</h2>
+      <div
+        class="table-wrapper"
+        tabindex="0"
+        role="region"
+        aria-labelledby="table-caption"
+      >
+        <table>
+          <caption id="table-caption">{table.caption}</caption>
+          <thead>
+            <tr>
+              {table.columns.map((column) => <th scope="col">{column}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {
+              table.rows.map((row) => (
+                <tr>
+                  <th scope="row">{row[0]}</th>
+                  {row.slice(1).map((cell) => (
+                    <td>{cell}</td>
+                  ))}
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <p>{calc.tableNote}</p>
+    </section>
+
+    <section aria-labelledby="howto-heading">
+      <h2 id="howto-heading">{calc.howToHeading}</h2>
+      <ol class="steps">
+        {
+          data.howToSteps.map((step) => (
+            <li>
+              <strong>{step.name}.</strong> {step.text}
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+
+    <section aria-labelledby="tutorial-heading">
+      <h2 id="tutorial-heading">{calc.aboutHeading}</h2>
+      {data.tutorial.map((paragraph) => <p>{paragraph}</p>)}
+    </section>
+
+    <section aria-labelledby="formula-heading">
+      <h2 id="formula-heading">The formula</h2>
+      <p class="formula">{data.formula.text}</p>
+      <dl class="formula-parts">
+        {
+          data.formula.parts.map((part) => (
+            <div>
+              <dt>{part.term}</dt>
+              <dd>{part.meaning}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </section>
+
+    <section aria-labelledby="examples-heading">
+      <h2 id="examples-heading">Worked examples</h2>
+      {
+        data.examples.map((example) => (
+          <div class="example">
+            <h3>{example.title}</h3>
+            <ol>
+              {example.steps.map((step) => <li>{step}</li>)}
+            </ol>
+            <p class="example-result">{example.result}</p>
+          </div>
+        ))
+      }
+    </section>
+
+    <section aria-labelledby="faq-heading">
+      <h2 id="faq-heading">
+        Questions about {data.name.toLowerCase()}
+      </h2>
+      {
+        data.faqs.map((faq) => (
+          <div class="faq">
+            <h3>{faq.question}</h3>
+            <p>{faq.answer}</p>
+          </div>
+        ))
+      }
+    </section>
+
+    <aside class="felicity-note" aria-label="A note from Felicity">
+      <p>{data.felicityNote}</p>
+      <p class="felicity-signoff">
+        — <a href="https://kitchenwayfinder.com/about/">Felicity</a>
+      </p>
+    </aside>
+
+    <section aria-labelledby="reading-heading">
+      <h2 id="reading-heading">Keep reading</h2>
+      <ul>
+        {
+          data.links.map((link) => (
+            <li>
+              <a href={link.url}>{link.title}</a>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <nav aria-label="More converters" class="more-converters">
+      <h2>More converters</h2>
+      <ul>
+        {
+          siblings
+            .filter((sibling) => sibling.data.slug !== data.slug)
+            .map((sibling) => (
+              <li>
+                <a href={`${engineUrl}${sibling.data.slug}/`}>
+                  {sibling.data.title}
+                </a>{' '}
+                — {sibling.data.summary}
+              </li>
+            ))
+        }
+      </ul>
+      <p>
+        <a href={engineUrl}>All {engine.data.name} converters</a>
+      </p>
+    </nav>
+  </div>
+</BaseLayout>

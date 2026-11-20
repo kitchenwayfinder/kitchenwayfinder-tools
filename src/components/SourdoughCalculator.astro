@@ -1,0 +1,650 @@
+---
+// Sourdough calculator: three modes in one component.
+// - dough: flour + hydration % + starter % + salt % -> flour to add, water
+//   to add, starter, salt, total dough. Flour is the TOTAL flour
+//   (baker's percentages: flour is always 100%), so the starter's own
+//   flour and water are subtracted from what you add. A 100% hydration
+//   starter is half flour, half water by weight.
+// - feeding: starter amount + ratio (1:1:1 / 1:2:2 / 1:5:5) -> flour and
+//   water to feed, total starter after feeding.
+// - levain: target levain weight + ratio -> seed starter, flour, water.
+// The result updates as the user types; the initial answer is
+// server-rendered from the variation's defaults so the page still
+// answers without JavaScript (the reference table below does too).
+// The form also has an explicit Calculate submit button (MWG forms:
+// every form gets a submit button with actionable language). It runs
+// the same calculation the live updates perform; it never navigates
+// anywhere. Because the live updates already computed the answer, a
+// Calculate click would look dead without visible feedback — so the
+// submit handler flashes the result and moves focus to it (copied from
+// WeightConverter).
+//
+// Accessibility follows Modern Web Guidance: `forms` (real <form>,
+// labels above inputs, hints above inputs, 48px targets),
+// `validate-input-after-interaction` (:user-invalid styling, error text
+// revealed only after interaction), `accessible-error-announcement`
+// (aria-invalid synced with :user-invalid, one polite live region).
+interface Props {
+  mode: 'dough' | 'feeding' | 'levain';
+  name: string;
+  defaults: Record<string, unknown>;
+  presets: { label: string; [key: string]: unknown }[];
+  liquidLabel?: string;
+}
+
+const { mode, name, defaults, presets } = Astro.props;
+const liquidLabel = Astro.props.liquidLabel ?? 'Water';
+const liquid = liquidLabel.toLowerCase();
+
+const ratioX = (ratio: string) => Number(ratio.split(':')[1]);
+
+// Server-rendered initial answer from the variation's defaults.
+// Rounding matches the client script so the two can never disagree.
+let initialResult = '';
+let presetKey = 'flour';
+let heading = 'Work out the amounts';
+let presetsLegend = 'Common flour weights';
+if (mode === 'dough') {
+  const flour = Number(defaults.flour);
+  const hydration = Number(defaults.hydration);
+  const starterPct = Number(defaults.starterPercent);
+  const saltPct = Number(defaults.saltPercent);
+  const starterRaw = (flour * starterPct) / 100;
+  const starter = Math.round(starterRaw);
+  const flourToAdd = Math.round(flour - starterRaw / 2);
+  const waterToAdd = Math.round((flour * hydration) / 100 - starterRaw / 2);
+  const salt = Math.round((flour * saltPct) / 100);
+  const total = flourToAdd + waterToAdd + starter + salt;
+  initialResult = `${flour} g flour at ${hydration}% hydration: add ${flourToAdd} g flour, ${waterToAdd} g ${liquid}, ${starter} g starter, ${salt} g salt. Total dough ${total} g.`;
+} else if (mode === 'feeding') {
+  const starterAmt = Number(defaults.starter);
+  const ratio = String(defaults.ratio);
+  const feed = Math.round(starterAmt * ratioX(ratio));
+  const total = starterAmt + feed * 2;
+  initialResult = `Feed ${starterAmt} g starter at ${ratio} with ${feed} g flour and ${feed} g water. Total starter ${total} g.`;
+  presetKey = 'starter';
+  heading = 'Work out the feeding';
+  presetsLegend = 'Common starter amounts';
+} else {
+  const target = Number(defaults.levain);
+  const ratio = String(defaults.ratio);
+  const seed = Math.round(target / (1 + 2 * ratioX(ratio)));
+  const rest = target - seed;
+  const flour = Math.round(rest / 2);
+  const water = rest - flour;
+  initialResult = `${target} g levain at ${ratio}: ${seed} g starter, ${flour} g flour, ${water} g water.`;
+  presetKey = 'levain';
+  heading = 'Build the levain';
+  presetsLegend = 'Common levain weights';
+}
+---
+
+<form
+  id="converter-form"
+  class="converter"
+  aria-labelledby="converter-heading"
+  novalidate
+  data-mode={mode}
+  data-liquid={liquid}
+>
+  <h2 id="converter-heading">{heading}</h2>
+  <div class="converter-fields">
+    {
+      mode === 'dough' && (
+        <>
+          <div class="field">
+            <label for="flour-input">Flour</label>
+            <span id="flour-hint" class="hint">
+              Total flour in grams, starter flour included
+            </span>
+            <input
+              type="number"
+              id="flour-input"
+              name="flour"
+              value={String(defaults.flour)}
+              min="0"
+              step="any"
+              inputmode="decimal"
+              enterkeyhint="done"
+              aria-describedby="flour-hint"
+              aria-invalid="false"
+              data-error="flour-error"
+            />
+            <div id="flour-error" class="error-msg">
+              <span role="img" aria-label="Error">
+                !
+              </span>{' '}
+              Enter 0 or more grams of flour.
+            </div>
+          </div>
+          <div class="field">
+            <label for="hydration-input">Hydration</label>
+            <span id="hydration-hint" class="hint">
+              Water as a percentage of the flour
+            </span>
+            <input
+              type="number"
+              id="hydration-input"
+              name="hydration"
+              value={String(defaults.hydration)}
+              min="0"
+              max="100"
+              step="any"
+              inputmode="decimal"
+              enterkeyhint="done"
+              aria-describedby="hydration-hint"
+              aria-invalid="false"
+              data-error="hydration-error"
+            />
+            <div id="hydration-error" class="error-msg">
+              <span role="img" aria-label="Error">
+                !
+              </span>{' '}
+              Enter a hydration between 0 and 100.
+            </div>
+          </div>
+          <div class="field">
+            <label for="starter-input">Starter</label>
+            <span id="starter-hint" class="hint">
+              Starter as a percentage of the flour
+            </span>
+            <input
+              type="number"
+              id="starter-input"
+              name="starter"
+              value={String(defaults.starterPercent)}
+              min="0"
+              max="100"
+              step="any"
+              inputmode="decimal"
+              enterkeyhint="done"
+              aria-describedby="starter-hint"
+              aria-invalid="false"
+              data-error="starter-error"
+            />
+            <div id="starter-error" class="error-msg">
+              <span role="img" aria-label="Error">
+                !
+              </span>{' '}
+              Enter a starter percentage between 0 and 100.
+            </div>
+          </div>
+          <div class="field">
+            <label for="salt-input">Salt</label>
+            <span id="salt-hint" class="hint">
+              Salt as a percentage of the flour
+            </span>
+            <input
+              type="number"
+              id="salt-input"
+              name="salt"
+              value={String(defaults.saltPercent)}
+              min="0"
+              max="10"
+              step="any"
+              inputmode="decimal"
+              enterkeyhint="done"
+              aria-describedby="salt-hint"
+              aria-invalid="false"
+              data-error="salt-error"
+            />
+            <div id="salt-error" class="error-msg">
+              <span role="img" aria-label="Error">
+                !
+              </span>{' '}
+              Enter a salt percentage between 0 and 10.
+            </div>
+          </div>
+        </>
+      )
+    }
+    {
+      mode === 'feeding' && (
+        <>
+          <div class="field">
+            <label for="amount-input">Starter</label>
+            <span id="amount-hint" class="hint">
+              Ripe starter from the jar, in grams
+            </span>
+            <input
+              type="number"
+              id="amount-input"
+              name="amount"
+              value={String(defaults.starter)}
+              min="0"
+              step="any"
+              inputmode="decimal"
+              enterkeyhint="done"
+              aria-describedby="amount-hint"
+              aria-invalid="false"
+              data-error="amount-error"
+            />
+            <div id="amount-error" class="error-msg">
+              <span role="img" aria-label="Error">
+                !
+              </span>{' '}
+              Enter 0 or more grams of starter.
+            </div>
+          </div>
+          <div class="field">
+            <label for="ratio-select">Feeding ratio</label>
+            <span id="ratio-hint" class="hint">
+              Starter : flour : water, by weight
+            </span>
+            <select
+              id="ratio-select"
+              name="ratio"
+              aria-describedby="ratio-hint"
+            >
+              <option value="1:1:1" selected={defaults.ratio === '1:1:1'}>
+                1:1:1
+              </option>
+              <option value="1:2:2" selected={defaults.ratio === '1:2:2'}>
+                1:2:2
+              </option>
+              <option value="1:5:5" selected={defaults.ratio === '1:5:5'}>
+                1:5:5
+              </option>
+            </select>
+          </div>
+        </>
+      )
+    }
+    {
+      mode === 'levain' && (
+        <>
+          <div class="field">
+            <label for="amount-input">Levain</label>
+            <span id="amount-hint" class="hint">
+              Total levain weight your recipe needs, in grams
+            </span>
+            <input
+              type="number"
+              id="amount-input"
+              name="amount"
+              value={String(defaults.levain)}
+              min="0"
+              step="any"
+              inputmode="decimal"
+              enterkeyhint="done"
+              aria-describedby="amount-hint"
+              aria-invalid="false"
+              data-error="amount-error"
+            />
+            <div id="amount-error" class="error-msg">
+              <span role="img" aria-label="Error">
+                !
+              </span>{' '}
+              Enter 0 or more grams of levain.
+            </div>
+          </div>
+          <div class="field">
+            <label for="ratio-select">Build ratio</label>
+            <span id="ratio-hint" class="hint">
+              Starter : flour : water, by weight
+            </span>
+            <select
+              id="ratio-select"
+              name="ratio"
+              aria-describedby="ratio-hint"
+            >
+              <option value="1:1:1" selected={defaults.ratio === '1:1:1'}>
+                1:1:1
+              </option>
+              <option value="1:2:2" selected={defaults.ratio === '1:2:2'}>
+                1:2:2
+              </option>
+              <option value="1:5:5" selected={defaults.ratio === '1:5:5'}>
+                1:5:5
+              </option>
+            </select>
+          </div>
+        </>
+      )
+    }
+  </div>
+  <button type="submit" class="convert-button">Calculate</button>
+  <!-- tabindex="-1" so a Calculate click can move focus here (MWG
+       accessibility: programmatically focusable, not in the tab order).
+       No aria-hidden: a focusable element must never be aria-hidden.
+       The live region still announces typing updates; the result text
+       itself is not a live region, so it is never announced twice. -->
+  <p class="converter-result" id="converter-result" tabindex="-1">
+    {initialResult}
+  </p>
+  <fieldset class="presets">
+    <legend>{presetsLegend}</legend>
+    {
+      presets.map((preset) => (
+        <button type="button" class="chip" data-value={String(preset[presetKey])}>
+          {preset.label}
+        </button>
+      ))
+    }
+  </fieldset>
+</form>
+<div id="converter-announcer" class="visually-hidden" aria-live="polite"></div>
+
+<script is:inline>
+  (function () {
+    var form = document.getElementById('converter-form');
+    if (!form) return;
+    var mode = form.dataset.mode;
+    var liquid = form.dataset.liquid || 'water';
+    var flourInput = document.getElementById('flour-input');
+    var hydrationInput = document.getElementById('hydration-input');
+    var starterInput = document.getElementById('starter-input');
+    var saltInput = document.getElementById('salt-input');
+    var amountInput = document.getElementById('amount-input');
+    var ratioSelect = document.getElementById('ratio-select');
+    var result = document.getElementById('converter-result');
+    var announcer = document.getElementById('converter-announcer');
+    var announceTimer = null;
+    var announcedField = null;
+
+    // One polite live region for the page carries both result updates and
+    // error announcements, debounced so typing does not spam it.
+    function announce(text) {
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      announceTimer = setTimeout(function () {
+        announcer.textContent = text;
+      }, 500);
+    }
+
+    function fmt(value, decimals) {
+      var rounded = Number(value.toFixed(decimals));
+      return String(rounded);
+    }
+
+    function showCleared() {
+      if (mode === 'feeding') {
+        result.textContent = 'Enter your starter amount to see the feeding.';
+      } else if (mode === 'levain') {
+        result.textContent = 'Enter the levain weight you need.';
+      } else {
+        result.textContent =
+          'Enter flour, hydration, starter, and salt to see the amounts.';
+      }
+      announce(result.textContent);
+    }
+
+    // Brief highlight on the result after a Calculate click: the answer
+    // was already showing (live updates), so the click needs visible
+    // feedback. Removing the class and forcing a reflow restarts the
+    // animation on repeated clicks. Under prefers-reduced-motion the
+    // animation never runs (CSS); the focus move still applies.
+    function flashResult() {
+      result.classList.remove('result-flash');
+      void result.offsetWidth;
+      result.classList.add('result-flash');
+    }
+
+    function ratioParts() {
+      return parseInt(ratioSelect.value.split(':')[1], 10);
+    }
+
+    function calculate() {
+      if (mode === 'dough') {
+        var flour = parseFloat(flourInput.value);
+        var hydration = parseFloat(hydrationInput.value);
+        var starterPct = parseFloat(starterInput.value);
+        var saltPct = parseFloat(saltInput.value);
+        if (
+          flourInput.value === '' ||
+          hydrationInput.value === '' ||
+          starterInput.value === '' ||
+          saltInput.value === '' ||
+          isNaN(flour) ||
+          isNaN(hydration) ||
+          isNaN(starterPct) ||
+          isNaN(saltPct)
+        ) {
+          showCleared();
+          return;
+        }
+        if (
+          flour < 0 ||
+          hydration < 0 ||
+          hydration > 100 ||
+          starterPct < 0 ||
+          starterPct > 100 ||
+          saltPct < 0 ||
+          saltPct > 10
+        ) {
+          return;
+        }
+        var starterRaw = (flour * starterPct) / 100;
+        var starter = Math.round(starterRaw);
+        var flourToAdd = Math.round(flour - starterRaw / 2);
+        var waterToAdd = Math.round(
+          (flour * hydration) / 100 - starterRaw / 2,
+        );
+        var salt = Math.round((flour * saltPct) / 100);
+        if (waterToAdd < 0) {
+          result.textContent =
+            'The starter already brings more water than this hydration needs. Lower the starter percentage or raise the hydration.';
+          announce(result.textContent);
+          return;
+        }
+        var total = flourToAdd + waterToAdd + starter + salt;
+        result.textContent =
+          fmt(flour, 1) +
+          ' g flour at ' +
+          fmt(hydration, 1) +
+          '% hydration: add ' +
+          flourToAdd +
+          ' g flour, ' +
+          waterToAdd +
+          ' g ' +
+          liquid +
+          ', ' +
+          starter +
+          ' g starter, ' +
+          salt +
+          ' g salt. Total dough ' +
+          total +
+          ' g.';
+        announce(result.textContent);
+      } else if (mode === 'feeding') {
+        var amount = parseFloat(amountInput.value);
+        if (amountInput.value === '' || isNaN(amount)) {
+          showCleared();
+          return;
+        }
+        if (amount < 0) return;
+        var feed = Math.round(amount * ratioParts());
+        var totalStarter = Math.round(amount + feed * 2);
+        result.textContent =
+          'Feed ' +
+          fmt(amount, 1) +
+          ' g starter at ' +
+          ratioSelect.value +
+          ' with ' +
+          feed +
+          ' g flour and ' +
+          feed +
+          ' g water. Total starter ' +
+          totalStarter +
+          ' g.';
+        announce(result.textContent);
+      } else {
+        var target = parseFloat(amountInput.value);
+        if (amountInput.value === '' || isNaN(target)) {
+          showCleared();
+          return;
+        }
+        if (target < 0) return;
+        var x = ratioParts();
+        var seed = Math.round(target / (1 + 2 * x));
+        var rest = Math.round(target) - seed;
+        var levainFlour = Math.round(rest / 2);
+        var levainWater = rest - levainFlour;
+        result.textContent =
+          fmt(target, 1) +
+          ' g levain at ' +
+          ratioSelect.value +
+          ': ' +
+          seed +
+          ' g starter, ' +
+          levainFlour +
+          ' g flour, ' +
+          levainWater +
+          ' g water.';
+        announce(result.textContent);
+      }
+    }
+
+    // The Calculate button (and Enter) runs the calculation from the
+    // current inputs. Live updates already keep the result in sync, so
+    // the click is mostly confirmation — the flash and focus move make
+    // it visible. No server: the submit never navigates (the form
+    // carries novalidate, so native bubbles never appear and errors
+    // stay inline). On an invalid field, focus moves to the first error
+    // (MWG forms: submit is the final gatekeeper).
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var fields = [];
+      if (mode === 'dough') {
+        fields = [flourInput, hydrationInput, starterInput, saltInput];
+      } else {
+        fields = [amountInput];
+      }
+      var firstInvalid = null;
+      fields.forEach(function (el) {
+        syncAria(el, true);
+        if (!firstInvalid && el.getAttribute('aria-invalid') === 'true')
+          firstInvalid = el;
+      });
+      if (firstInvalid) {
+        firstInvalid.focus();
+        return;
+      }
+      calculate();
+      // Visible feedback for the click: flash the result and move focus
+      // to it, so the user sees — and lands on — the answer they just
+      // asked for. Focus announces the result to screen readers, so the
+      // pending live-region announcement is cleared to avoid saying it
+      // twice. On error (above) there is no flash and focus stays on
+      // the invalid field.
+      flashResult();
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      result.focus();
+    });
+
+    var liveInputs = [];
+    if (mode === 'dough') {
+      liveInputs = [flourInput, hydrationInput, starterInput, saltInput];
+    } else {
+      liveInputs = [amountInput];
+    }
+    liveInputs.forEach(function (el) {
+      el.addEventListener('input', calculate);
+    });
+    if (ratioSelect) ratioSelect.addEventListener('change', calculate);
+
+    var mainInput = mode === 'dough' ? flourInput : amountInput;
+    form.querySelectorAll('.chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        mainInput.value = chip.dataset.value;
+        calculate();
+        mainInput.focus();
+      });
+    });
+
+    // Keep aria-invalid in sync with the CSS :user-invalid state, and
+    // announce errors through the one polite live region. Adapted from
+    // the validate-input-after-interaction guide.
+    function linkError(el, shown) {
+      var errorId = el.dataset.error;
+      if (!errorId) return;
+      var ids = (el.getAttribute('aria-describedby') || '')
+        .split(/\s+/)
+        .filter(function (id) {
+          return id && id !== errorId;
+        });
+      if (shown) ids.push(errorId);
+      if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
+      else el.removeAttribute('aria-describedby');
+    }
+
+    function spokenText(node) {
+      var copy = node.cloneNode(true);
+      copy.querySelectorAll('[aria-hidden="true"]').forEach(function (n) {
+        n.remove();
+      });
+      copy
+        .querySelectorAll('[role="img"][aria-label]')
+        .forEach(function (n) {
+          n.replaceWith(n.getAttribute('aria-label') + ': ');
+        });
+      return copy.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    var flagged = new WeakSet();
+    var announced = new WeakSet();
+    function syncAria(el, doAnnounce) {
+      if (!el.matches || !el.matches('input, select, textarea')) return;
+      var invalid = el.matches(':user-invalid');
+      if (invalid) {
+        if (doAnnounce && !announced.has(el)) {
+          var error = document.getElementById(el.dataset.error);
+          if (error) {
+            var label =
+              el.labels && el.labels[0] ? spokenText(el.labels[0]) + ': ' : '';
+            announcedField = el;
+            announce(label + spokenText(error));
+          }
+          announced.add(el);
+        }
+        el.setAttribute('aria-invalid', 'true');
+        linkError(el, true);
+        flagged.add(el);
+      } else if (
+        flagged.has(el) ||
+        el.getAttribute('aria-invalid') !== 'true'
+      ) {
+        el.setAttribute('aria-invalid', 'false');
+        linkError(el, false);
+        flagged.delete(el);
+        announced.delete(el);
+        if (announcedField === el) {
+          clearTimeout(announceTimer);
+          announcer.textContent = '';
+        }
+      }
+    }
+
+    form
+      .querySelectorAll('input, select, textarea')
+      .forEach(function (el) {
+        syncAria(el);
+      });
+    form.addEventListener(
+      'blur',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener('input', function (e) {
+      if (e.target.hasAttribute('aria-invalid')) syncAria(e.target);
+    });
+    form.addEventListener(
+      'change',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener(
+      'invalid',
+      function (e) {
+        announced.add(e.target);
+        syncAria(e.target);
+      },
+      true,
+    );
+  })();
+</script>

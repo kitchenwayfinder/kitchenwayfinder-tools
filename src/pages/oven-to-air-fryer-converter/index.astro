@@ -1,0 +1,123 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const engines = await getCollection(
+  'engines',
+  (entry) => entry.data.slug === 'oven-to-air-fryer-converter',
+);
+const engine = engines[0];
+const variations = await getCollection(
+  'variations',
+  (entry) => entry.data.engine === 'oven-to-air-fryer-converter',
+);
+
+// The plan's launch order, not collection order (which is not guaranteed).
+const order = [
+  'oven-to-air-fryer-chicken-breast',
+  'oven-to-air-fryer-chicken-wings',
+  'oven-to-air-fryer-french-fries',
+  'oven-to-air-fryer-frozen-foods',
+  'oven-to-air-fryer-vegetables',
+  'oven-to-air-fryer-baked-goods',
+  'oven-to-air-fryer-fish',
+  'oven-to-air-fryer-chicken-thighs',
+  'oven-to-air-fryer-pork-chops',
+  'oven-to-air-fryer-potatoes',
+];
+const sorted = [...variations].sort(
+  (a, b) => order.indexOf(a.data.slug) - order.indexOf(b.data.slug),
+);
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const engineUrl = `${base}/oven-to-air-fryer-converter/`;
+const canonicalUrl = `https://kitchenwayfinder.com${engineUrl}`;
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebPage',
+      name: engine.data.title,
+      url: canonicalUrl,
+      author: {
+        '@type': 'Person',
+        name: 'Felicity Vance',
+        url: 'https://kitchenwayfinder.com/about/',
+      },
+      dateModified: '2026-11-20',
+    },
+    {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Home',
+          item: 'https://kitchenwayfinder.com/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Tools',
+          item: 'https://kitchenwayfinder.com/tools/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
+          name: engine.data.name,
+          item: canonicalUrl,
+        },
+      ],
+    },
+  ],
+};
+---
+
+<BaseLayout
+  title={engine.data.title}
+  description={engine.data.metaDescription}
+  canonicalPath="/oven-to-air-fryer-converter/"
+>
+  <script
+    slot="head"
+    type="application/ld+json"
+    set:html={JSON.stringify(structuredData)}
+  />
+  <div class="wrap tool-page">
+    <nav aria-label="Breadcrumb" class="breadcrumbs">
+      <ol>
+        <li><a href="https://kitchenwayfinder.com/">Home</a></li>
+        <li><a href={`${base}/`}>Tools</a></li>
+        <li aria-current="page">{engine.data.name}</li>
+      </ol>
+    </nav>
+
+    <h1>{engine.data.name}</h1>
+    <p class="lede">{engine.data.description}</p>
+    <p class="byline">
+      By <a href="https://kitchenwayfinder.com/about/">Felicity Vance</a>
+    </p>
+    {engine.data.intro.map((paragraph) => <p>{paragraph}</p>)}
+
+    <section aria-labelledby="converters-heading">
+      <h2 id="converters-heading">Converters</h2>
+      <ul class="converter-list">
+        {
+          sorted.map((variation) => (
+            <li>
+              <a href={`${engineUrl}${variation.data.slug}/`}>
+                {variation.data.name}
+              </a>
+              <span>{variation.data.summary}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <p>
+      <a href={`${base}/`}>Back to all kitchen tools</a>
+    </p>
+  </div>
+</BaseLayout>

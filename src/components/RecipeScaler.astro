@@ -1,0 +1,486 @@
+---
+// Recipe scaler for one variation. The result updates as the user types;
+// the initial answer (1 cup at the variation's signature factor) is
+// server-rendered so the page still answers without JavaScript (the
+// reference table below does too). The form also has an explicit Convert
+// submit button (MWG forms: every form gets a submit button with
+// actionable language). It runs the same scaling the live updates
+// perform; it never navigates anywhere. Because the live updates already
+// computed the answer, a Convert click would look dead without visible
+// feedback (Cozy, 2026-11-20) — so the submit handler flashes the result
+// and moves focus to it.
+//
+// Two factor modes. Servings mode: the factor comes from original and
+// desired servings (factor = desired / original). Ingredient mode: the
+// factor comes from one ingredient's amounts (factor = amount you have /
+// amount the recipe calls for). The two factor inputs are generic, so
+// both modes share the same maths and the same preset chips.
+//
+// Amounts round to what a cook can measure: cups, tablespoons and
+// teaspoons to the nearest eighth, grams and ounces to one decimal,
+// counts (eggs, cloves) to whole numbers.
+//
+// Accessibility follows Modern Web Guidance, copied from the pilot
+// WeightConverter: `forms` (real <form>, labels above inputs, hints
+// above inputs, 48px targets), `validate-input-after-interaction`
+// (:user-invalid styling, error text revealed only after interaction),
+// `accessible-error-announcement` (aria-invalid synced with
+// :user-invalid, one polite live region).
+interface Props {
+  name: string;
+  factor: number;
+  from: number;
+  to: number;
+  mode: 'servings' | 'ingredient';
+  presets: { label: string; from: number; to: number }[];
+  notes: string[];
+}
+
+const { name, factor, from, to, mode, presets, notes } = Astro.props;
+const isIngredientMode = mode === 'ingredient';
+
+// Server-rendered initial answer: 1 cup at the signature factor.
+const FRACTIONS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
+function toFraction(value: number): string {
+  let whole = Math.floor(value);
+  let eighths = Math.round((value - whole) * 8);
+  if (eighths === 8) {
+    whole += 1;
+    eighths = 0;
+  }
+  if (eighths === 0) return String(whole);
+  if (whole === 0) return FRACTIONS[eighths];
+  return `${whole} ${FRACTIONS[eighths]}`;
+}
+function fmtTrim(value: number, decimals: number): string {
+  return String(Number(value.toFixed(decimals)));
+}
+const scaledCups = toFraction(factor);
+const initialResult = `1 cup becomes ${scaledCups} ${factor === 1 ? 'cup' : 'cups'}. Scale factor: ${fmtTrim(factor, 2)}×.`;
+---
+
+<form
+  id="converter-form"
+  class="converter"
+  aria-labelledby="converter-heading"
+  novalidate
+  data-mode={mode}
+>
+  <h2 id="converter-heading">Scale {name.toLowerCase()}</h2>
+  <div class="converter-fields">
+    <div class="field">
+      <label for="factor-from-input">
+        {isIngredientMode ? 'Amount called for' : 'Original servings'}
+      </label>
+      <span id="factor-from-hint" class="hint">
+        {
+          isIngredientMode
+            ? 'What the recipe asks for, one ingredient'
+            : 'What the recipe makes'
+        }
+      </span>
+      <input
+        type="number"
+        id="factor-from-input"
+        name="factorFrom"
+        value={from}
+        min={isIngredientMode ? 0 : 1}
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="factor-from-hint"
+        aria-invalid="false"
+        data-error="factor-from-error"
+      />
+      <div id="factor-from-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span>
+        {
+          isIngredientMode
+            ? 'Enter more than 0.'
+            : 'Enter 1 or more servings.'
+        }
+      </div>
+    </div>
+    <div class="field">
+      <label for="factor-to-input">
+        {isIngredientMode ? 'Amount you have' : 'Desired servings'}
+      </label>
+      <span id="factor-to-hint" class="hint">
+        {
+          isIngredientMode
+            ? 'What you actually have on hand'
+            : 'What you want to make'
+        }
+      </span>
+      <input
+        type="number"
+        id="factor-to-input"
+        name="factorTo"
+        value={to}
+        min={isIngredientMode ? 0 : 1}
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="factor-to-hint"
+        aria-invalid="false"
+        data-error="factor-to-error"
+      />
+      <div id="factor-to-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span>
+        {
+          isIngredientMode
+            ? 'Enter more than 0.'
+            : 'Enter 1 or more servings.'
+        }
+      </div>
+    </div>
+    <div class="field">
+      <label for="amount-input">Ingredient amount</label>
+      <span id="amount-hint" class="hint">
+        One ingredient at a time, from the recipe
+      </span>
+      <input
+        type="number"
+        id="amount-input"
+        name="amount"
+        value="1"
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="amount-hint"
+        aria-invalid="false"
+        data-error="amount-error"
+      />
+      <div id="amount-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more.
+      </div>
+    </div>
+    <div class="field">
+      <label for="unit-select">Unit</label>
+      <span id="unit-hint" class="hint">Unit for this ingredient</span>
+      <select
+        id="unit-select"
+        name="unit"
+        aria-describedby="unit-hint"
+        aria-invalid="false"
+      >
+        <option value="cups" selected>Cups</option>
+        <option value="tbsp">Tablespoons</option>
+        <option value="tsp">Teaspoons</option>
+        <option value="g">Grams</option>
+        <option value="oz">Ounces</option>
+        <option value="count">Count (eggs, cloves)</option>
+      </select>
+    </div>
+  </div>
+  <button type="submit" class="convert-button">Convert</button>
+  <!-- tabindex="-1" so a Convert click can move focus here (MWG
+       accessibility: programmatically focusable, not in the tab order).
+       No aria-hidden: a focusable element must never be aria-hidden.
+       The live region still announces typing updates; the result text
+       itself is not a live region, so it is never announced twice. -->
+  <p class="converter-result" id="converter-result" tabindex="-1">
+    {initialResult}
+  </p>
+  {
+    notes.length > 0 && (
+      <div>
+        {notes.map((note) => (
+          <p>{note}</p>
+        ))}
+      </div>
+    )
+  }
+  <fieldset class="presets">
+    <legend>
+      {isIngredientMode ? 'Common amounts' : 'Common serving pairs'}
+    </legend>
+    {
+      presets.map((preset) => (
+        <button
+          type="button"
+          class="chip"
+          data-from={preset.from}
+          data-to={preset.to}
+        >
+          {preset.label}
+        </button>
+      ))
+    }
+  </fieldset>
+</form>
+<div id="converter-announcer" class="visually-hidden" aria-live="polite"></div>
+
+<script is:inline>
+  (function () {
+    var form = document.getElementById('converter-form');
+    if (!form) return;
+    var isIngredientMode = form.dataset.mode === 'ingredient';
+    var factorFromInput = document.getElementById('factor-from-input');
+    var factorToInput = document.getElementById('factor-to-input');
+    var amountInput = document.getElementById('amount-input');
+    var unitSelect = document.getElementById('unit-select');
+    var result = document.getElementById('converter-result');
+    var announcer = document.getElementById('converter-announcer');
+    var announceTimer = null;
+    var announcedField = null;
+
+    // One polite live region for the page carries both result updates and
+    // error announcements, debounced so typing does not spam it.
+    function announce(text) {
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      announceTimer = setTimeout(function () {
+        announcer.textContent = text;
+      }, 500);
+    }
+
+    function fmt(value, decimals) {
+      var rounded = Number(value.toFixed(decimals));
+      return String(rounded);
+    }
+
+    // Nearest eighth, as a cook would read it: 0.5 -> ½, 1.25 -> 1 ¼.
+    var FRACTIONS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
+    function toFraction(value) {
+      var whole = Math.floor(value);
+      var eighths = Math.round((value - whole) * 8);
+      if (eighths === 8) {
+        whole += 1;
+        eighths = 0;
+      }
+      if (eighths === 0) return String(whole);
+      if (whole === 0) return FRACTIONS[eighths];
+      return whole + ' ' + FRACTIONS[eighths];
+    }
+
+    var UNIT_FORMS = {
+      cups: ['cup', 'cups'],
+      tbsp: ['tablespoon', 'tablespoons'],
+      tsp: ['teaspoon', 'teaspoons'],
+      g: ['g', 'g'],
+      oz: ['oz', 'oz'],
+      count: ['item', 'items'],
+    };
+
+    // Cups, tablespoons and teaspoons round to the nearest eighth; grams
+    // and ounces to one decimal; counts to whole numbers (eggs do not
+    // come in fractions, and a beaten half egg is a measuring job, not
+    // a calculator answer).
+    function formatAmount(value, unit) {
+      if (unit === 'cups' || unit === 'tbsp' || unit === 'tsp') {
+        if (value > 0 && value < 1 / 16) return 'less than ⅛';
+        return toFraction(value);
+      }
+      if (unit === 'count') {
+        var rounded = Math.round(value);
+        if (rounded === 0) return 'less than 1';
+        return String(rounded);
+      }
+      return fmt(value, 1);
+    }
+
+    function unitWord(unit, value) {
+      var forms = UNIT_FORMS[unit] || UNIT_FORMS.cups;
+      return value === 1 ? forms[0] : forms[1];
+    }
+
+    function showResult() {
+      var from = parseFloat(factorFromInput.value);
+      var to = parseFloat(factorToInput.value);
+      var amount = parseFloat(amountInput.value);
+      var unit = unitSelect.value;
+      if (
+        factorFromInput.value === '' ||
+        factorToInput.value === '' ||
+        amountInput.value === '' ||
+        isNaN(from) ||
+        isNaN(to) ||
+        isNaN(amount)
+      ) {
+        showCleared();
+        return;
+      }
+      if (from <= 0 || to <= 0) {
+        result.textContent = isIngredientMode
+          ? 'Enter amounts above 0 for both fields.'
+          : 'Enter servings above 0 for both fields.';
+        announce(result.textContent);
+        return;
+      }
+      if (amount < 0) return;
+      var factor = to / from;
+      var scaled = amount * factor;
+      var amountText =
+        formatAmount(amount, unit) + ' ' + unitWord(unit, amount);
+      var scaledText =
+        formatAmount(scaled, unit) + ' ' + unitWord(unit, scaled);
+      result.textContent =
+        amountText +
+        ' becomes ' +
+        scaledText +
+        '. Scale factor: ' +
+        fmt(factor, 2) +
+        '×.';
+      announce(result.textContent);
+    }
+
+    function showCleared() {
+      result.textContent = 'Enter servings and an amount to scale.';
+      announce(result.textContent);
+    }
+
+    // Brief highlight on the result after a Convert click: the answer
+    // was already showing (live updates), so the click needs visible
+    // feedback. Removing the class and forcing a reflow restarts the
+    // animation on repeated clicks. Under prefers-reduced-motion the
+    // animation never runs (CSS); the focus move still applies.
+    function flashResult() {
+      result.classList.remove('result-flash');
+      void result.offsetWidth;
+      result.classList.add('result-flash');
+    }
+
+    // The Convert button (and Enter) runs the scaling. Live updates
+    // already keep the result current, so this is the same calculation.
+    // No server: the submit never navigates (the form carries novalidate,
+    // so native bubbles never appear and errors stay inline). On an
+    // invalid field, focus moves to the first error (MWG forms: submit
+    // is the final gatekeeper).
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var fields = [factorFromInput, factorToInput, amountInput];
+      var firstInvalid = null;
+      fields.forEach(function (el) {
+        syncAria(el, true);
+        if (!firstInvalid && el.getAttribute('aria-invalid') === 'true')
+          firstInvalid = el;
+      });
+      if (firstInvalid) {
+        firstInvalid.focus();
+        return;
+      }
+      showResult();
+      // Visible feedback for the click: flash the result and move focus
+      // to it, so the user sees — and lands on — the answer they just
+      // asked for. Focus announces the result to screen readers, so the
+      // pending live-region announcement is cleared to avoid saying it
+      // twice. On error (above) there is no flash and focus stays on
+      // the invalid field.
+      flashResult();
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      result.focus();
+    });
+
+    factorFromInput.addEventListener('input', showResult);
+    factorToInput.addEventListener('input', showResult);
+    amountInput.addEventListener('input', showResult);
+    unitSelect.addEventListener('change', showResult);
+
+    form.querySelectorAll('.chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        factorFromInput.value = chip.dataset.from;
+        factorToInput.value = chip.dataset.to;
+        showResult();
+        factorFromInput.focus();
+      });
+    });
+
+    // Keep aria-invalid in sync with the CSS :user-invalid state, and
+    // announce errors through the one polite live region. Adapted from
+    // the validate-input-after-interaction guide.
+    function linkError(el, shown) {
+      var errorId = el.dataset.error;
+      if (!errorId) return;
+      var ids = (el.getAttribute('aria-describedby') || '')
+        .split(/\s+/)
+        .filter(function (id) {
+          return id && id !== errorId;
+        });
+      if (shown) ids.push(errorId);
+      if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
+      else el.removeAttribute('aria-describedby');
+    }
+
+    function spokenText(node) {
+      var copy = node.cloneNode(true);
+      copy.querySelectorAll('[aria-hidden="true"]').forEach(function (n) {
+        n.remove();
+      });
+      copy
+        .querySelectorAll('[role="img"][aria-label]')
+        .forEach(function (n) {
+          n.replaceWith(n.getAttribute('aria-label') + ': ');
+        });
+      return copy.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    var flagged = new WeakSet();
+    var announced = new WeakSet();
+    function syncAria(el, doAnnounce) {
+      if (!el.matches || !el.matches('input, select, textarea')) return;
+      var invalid = el.matches(':user-invalid');
+      if (invalid) {
+        if (doAnnounce && !announced.has(el)) {
+          var error = document.getElementById(el.dataset.error);
+          if (error) {
+            var label = el.labels && el.labels[0]
+              ? spokenText(el.labels[0]) + ': '
+              : '';
+            announcedField = el;
+            announce(label + spokenText(error));
+          }
+          announced.add(el);
+        }
+        el.setAttribute('aria-invalid', 'true');
+        linkError(el, true);
+        flagged.add(el);
+      } else if (
+        flagged.has(el) ||
+        el.getAttribute('aria-invalid') !== 'true'
+      ) {
+        el.setAttribute('aria-invalid', 'false');
+        linkError(el, false);
+        flagged.delete(el);
+        announced.delete(el);
+        if (announcedField === el) {
+          clearTimeout(announceTimer);
+          announcer.textContent = '';
+        }
+      }
+    }
+
+    form
+      .querySelectorAll('input, select, textarea')
+      .forEach(function (el) {
+        syncAria(el);
+      });
+    form.addEventListener(
+      'blur',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener('input', function (e) {
+      if (e.target.hasAttribute('aria-invalid')) syncAria(e.target);
+    });
+    form.addEventListener(
+      'change',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener(
+      'invalid',
+      function (e) {
+        announced.add(e.target);
+        syncAria(e.target);
+      },
+      true,
+    );
+  })();
+</script>

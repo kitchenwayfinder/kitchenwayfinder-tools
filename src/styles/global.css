@@ -306,6 +306,35 @@ main {
   outline-offset: 2px;
 }
 
+/* Selects share the input styling (egg size, doneness, pan pickers).
+   Same 48px target, same focus and error treatment. */
+.field select {
+  font: inherit;
+  font-size: max(1rem, 1em);
+  min-block-size: 3rem;
+  inline-size: 100%;
+  max-inline-size: 16rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #767676;
+  border-radius: 0.25rem;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.field select:focus-visible {
+  outline: 3px solid var(--tomato);
+  outline-offset: 2px;
+}
+
+.field select:user-invalid {
+  border-color: var(--tomato);
+  background-color: #fdf0ee;
+}
+
+.field select:user-invalid + .error-msg {
+  display: block;
+}
+
 /* Error state only after the user has interacted (MWG
    validate-input-after-interaction). Never :invalid alone. */
 .field input:user-invalid {

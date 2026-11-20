@@ -1,0 +1,392 @@
+---
+// Coffee ↔ water (or espresso ↔ milk) ratio calculator for one brew
+// method. The result updates as the user types; the initial answer at
+// the method's standard ratio is server-rendered so the page still
+// answers without JavaScript (the reference table below does too).
+// The form also has an explicit Convert submit button (MWG forms: every
+// form gets a submit button with actionable language). It runs the same
+// conversion the live updates perform; it never navigates anywhere.
+// Because the live updates already computed the answer, a Convert click
+// would look dead without visible feedback (Cozy, 2026-11-20) — so the
+// submit handler flashes the result and moves focus to it.
+//
+// Yield: for water methods the cup holds less than the water poured,
+// because spent grounds hold back about twice their weight in water
+// (retention, grams per gram of coffee). Turkish coffee keeps its
+// grounds in the cup, so retention is 0 and the yield is the full
+// water. For milk drinks the yield is espresso plus milk.
+//
+// Accessibility follows Modern Web Guidance: `forms` (real <form>,
+// labels above inputs, hints above inputs, 48px targets),
+// `validate-input-after-interaction` (:user-invalid styling, error text
+// revealed only after interaction), `accessible-error-announcement`
+// (aria-invalid synced with :user-invalid, one polite live region).
+interface Props {
+  name: string;
+  coffeeLabel: string;
+  liquidLabel: string;
+  ratio: number;
+  ratioLabel: string;
+  liquid: 'water' | 'milk';
+  retention: number;
+  defaultCoffee: number;
+  presets: { label: string; coffee: number; water?: number; milk?: number }[];
+}
+
+const {
+  name,
+  coffeeLabel,
+  liquidLabel,
+  ratio,
+  ratioLabel,
+  liquid,
+  retention,
+  defaultCoffee,
+  presets,
+} = Astro.props;
+const method = name.toLowerCase();
+const coffeeNoun = coffeeLabel.toLowerCase();
+const liquidNoun = liquidLabel.toLowerCase();
+const defaultLiquid = Math.round(defaultCoffee * ratio);
+const defaultYield =
+  liquid === 'milk'
+    ? defaultCoffee + defaultLiquid
+    : Math.round(defaultLiquid - retention * defaultCoffee);
+const coffeeHint =
+  liquid === 'milk' ? 'Liquid espresso, weighed' : 'Ground coffee, weighed';
+const liquidHint =
+  liquid === 'milk'
+    ? 'Milk in grams, weighed cold'
+    : 'Water in grams, 1 ml = 1 g';
+---
+
+<form
+  id="converter-form"
+  class="converter"
+  aria-labelledby="converter-heading"
+  novalidate
+  data-ratio={ratio}
+  data-ratio-label={ratioLabel}
+  data-liquid={liquid}
+  data-retention={retention}
+  data-coffee-label={coffeeNoun}
+  data-liquid-label={liquidNoun}
+>
+  <h2 id="converter-heading">
+    {coffeeLabel} and {liquidNoun} for {method}
+  </h2>
+  <div class="converter-fields">
+    <div class="field">
+      <label for="coffee-input">{coffeeLabel}</label>
+      <span id="coffee-hint" class="hint">{coffeeHint}</span>
+      <input
+        type="number"
+        id="coffee-input"
+        name="coffee"
+        value={defaultCoffee}
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="coffee-hint"
+        aria-invalid="false"
+        data-error="coffee-error"
+      />
+      <div id="coffee-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more grams of {
+          coffeeNoun
+        }.
+      </div>
+    </div>
+    <div class="field">
+      <label for="liquid-input">{liquidLabel}</label>
+      <span id="liquid-hint" class="hint">{liquidHint}</span>
+      <input
+        type="number"
+        id="liquid-input"
+        name="liquid"
+        value={defaultLiquid}
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="liquid-hint"
+        aria-invalid="false"
+        data-error="liquid-error"
+      />
+      <div id="liquid-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more grams of {
+          liquidNoun
+        }.
+      </div>
+    </div>
+  </div>
+  <button type="submit" class="convert-button">Convert</button>
+  <!-- tabindex="-1" so a Convert click can move focus here (MWG
+       accessibility: programmatically focusable, not in the tab order).
+       No aria-hidden: a focusable element must never be aria-hidden.
+       The live region still announces typing updates; the result text
+       itself is not a live region, so it is never announced twice. -->
+  <p class="converter-result" id="converter-result" tabindex="-1">
+    {defaultCoffee} g {coffeeNoun} + {defaultLiquid} g {liquidNoun} = about {
+      defaultYield
+    } ml in the cup
+  </p>
+  <fieldset class="presets">
+    <legend>Common amounts</legend>
+    {
+      presets.map((preset) => (
+        <button type="button" class="chip" data-coffee={preset.coffee}>
+          {preset.label}
+        </button>
+      ))
+    }
+  </fieldset>
+</form>
+<div id="converter-announcer" class="visually-hidden" aria-live="polite"></div>
+
+<script is:inline>
+  (function () {
+    var form = document.getElementById('converter-form');
+    if (!form) return;
+    var ratio = parseFloat(form.dataset.ratio);
+    var liquidKind = form.dataset.liquid;
+    var retention = parseFloat(form.dataset.retention);
+    var coffeeNoun = form.dataset.coffeeLabel;
+    var liquidNoun = form.dataset.liquidLabel;
+    var coffeeInput = document.getElementById('coffee-input');
+    var liquidInput = document.getElementById('liquid-input');
+    var result = document.getElementById('converter-result');
+    var announcer = document.getElementById('converter-announcer');
+    var announceTimer = null;
+    var announcedField = null;
+
+    // One polite live region for the page carries both result updates and
+    // error announcements, debounced so typing does not spam it.
+    function announce(text) {
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      announceTimer = setTimeout(function () {
+        announcer.textContent = text;
+      }, 500);
+    }
+
+    function fmt(value, decimals) {
+      var rounded = Number(value.toFixed(decimals));
+      return String(rounded);
+    }
+
+    function showResult(coffee, liquidAmount) {
+      var yieldMl =
+        liquidKind === 'milk'
+          ? coffee + liquidAmount
+          : liquidAmount - retention * coffee;
+      result.textContent =
+        fmt(coffee, 1) +
+        ' g ' +
+        coffeeNoun +
+        ' + ' +
+        fmt(liquidAmount, 0) +
+        ' g ' +
+        liquidNoun +
+        ' = about ' +
+        Math.round(yieldMl) +
+        ' ml in the cup';
+      announce(result.textContent);
+    }
+
+    function showCleared() {
+      result.textContent =
+        'Enter ' + coffeeNoun + ' or ' + liquidNoun + ' to convert.';
+      announce(result.textContent);
+    }
+
+    // Brief highlight on the result after a Convert click: the answer
+    // was already showing (live updates), so the click needs visible
+    // feedback. Removing the class and forcing a reflow restarts the
+    // animation on repeated clicks. Under prefers-reduced-motion the
+    // animation never runs (CSS); the focus move still applies.
+    function flashResult() {
+      result.classList.remove('result-flash');
+      void result.offsetWidth;
+      result.classList.add('result-flash');
+    }
+
+    function fromCoffee() {
+      var coffee = parseFloat(coffeeInput.value);
+      if (coffeeInput.value === '' || isNaN(coffee) || coffee < 0) {
+        if (coffeeInput.value === '') {
+          liquidInput.value = '';
+          showCleared();
+        }
+        return;
+      }
+      var liquidAmount = coffee * ratio;
+      liquidInput.value = fmt(liquidAmount, 0);
+      showResult(coffee, liquidAmount);
+    }
+
+    function fromLiquid() {
+      var liquidAmount = parseFloat(liquidInput.value);
+      if (liquidInput.value === '' || isNaN(liquidAmount) || liquidAmount < 0) {
+        if (liquidInput.value === '') {
+          coffeeInput.value = '';
+          showCleared();
+        }
+        return;
+      }
+      var coffee = liquidAmount / ratio;
+      coffeeInput.value = fmt(coffee, 1);
+      showResult(coffee, liquidAmount);
+    }
+
+    // The Convert button (and Enter) runs the conversion from the field
+    // the user last edited. Live updates already keep the two fields
+    // in sync, so converting from the last-edited field is always the
+    // value the user means. No server: the submit never navigates (the
+    // form carries novalidate, so native bubbles never appear and errors
+    // stay inline). On an invalid field, focus moves to the first error
+    // (MWG forms: submit is the final gatekeeper).
+    var lastEdited = coffeeInput;
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var fields = [coffeeInput, liquidInput];
+      var firstInvalid = null;
+      fields.forEach(function (el) {
+        syncAria(el, true);
+        if (!firstInvalid && el.getAttribute('aria-invalid') === 'true')
+          firstInvalid = el;
+      });
+      if (firstInvalid) {
+        firstInvalid.focus();
+        return;
+      }
+      if (lastEdited === liquidInput) fromLiquid();
+      else fromCoffee();
+      // Visible feedback for the click: flash the result and move focus
+      // to it, so the user sees — and lands on — the answer they just
+      // asked for. Focus announces the result to screen readers, so the
+      // pending live-region announcement is cleared to avoid saying it
+      // twice. On error (above) there is no flash and focus stays on
+      // the invalid field.
+      flashResult();
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      result.focus();
+    });
+
+    coffeeInput.addEventListener('input', function () {
+      lastEdited = coffeeInput;
+      fromCoffee();
+    });
+    liquidInput.addEventListener('input', function () {
+      lastEdited = liquidInput;
+      fromLiquid();
+    });
+
+    form.querySelectorAll('.chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        coffeeInput.value = chip.dataset.coffee;
+        lastEdited = coffeeInput;
+        fromCoffee();
+        coffeeInput.focus();
+      });
+    });
+
+    // Keep aria-invalid in sync with the CSS :user-invalid state, and
+    // announce errors through the one polite live region. Adapted from
+    // the validate-input-after-interaction guide.
+    function linkError(el, shown) {
+      var errorId = el.dataset.error;
+      if (!errorId) return;
+      var ids = (el.getAttribute('aria-describedby') || '')
+        .split(/\s+/)
+        .filter(function (id) {
+          return id && id !== errorId;
+        });
+      if (shown) ids.push(errorId);
+      if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
+      else el.removeAttribute('aria-describedby');
+    }
+
+    function spokenText(node) {
+      var copy = node.cloneNode(true);
+      copy.querySelectorAll('[aria-hidden="true"]').forEach(function (n) {
+        n.remove();
+      });
+      copy
+        .querySelectorAll('[role="img"][aria-label]')
+        .forEach(function (n) {
+          n.replaceWith(n.getAttribute('aria-label') + ': ');
+        });
+      return copy.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    var flagged = new WeakSet();
+    var announced = new WeakSet();
+    function syncAria(el, doAnnounce) {
+      if (!el.matches || !el.matches('input, select, textarea')) return;
+      var invalid = el.matches(':user-invalid');
+      if (invalid) {
+        if (doAnnounce && !announced.has(el)) {
+          var error = document.getElementById(el.dataset.error);
+          if (error) {
+            var label = el.labels && el.labels[0]
+              ? spokenText(el.labels[0]) + ': '
+              : '';
+            announcedField = el;
+            announce(label + spokenText(error));
+          }
+          announced.add(el);
+        }
+        el.setAttribute('aria-invalid', 'true');
+        linkError(el, true);
+        flagged.add(el);
+      } else if (
+        flagged.has(el) ||
+        el.getAttribute('aria-invalid') !== 'true'
+      ) {
+        el.setAttribute('aria-invalid', 'false');
+        linkError(el, false);
+        flagged.delete(el);
+        announced.delete(el);
+        if (announcedField === el) {
+          clearTimeout(announceTimer);
+          announcer.textContent = '';
+        }
+      }
+    }
+
+    form
+      .querySelectorAll('input, select, textarea')
+      .forEach(function (el) {
+        syncAria(el);
+      });
+    form.addEventListener(
+      'blur',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener('input', function (e) {
+      if (e.target.hasAttribute('aria-invalid')) syncAria(e.target);
+    });
+    form.addEventListener(
+      'change',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener(
+      'invalid',
+      function (e) {
+        announced.add(e.target);
+        syncAria(e.target);
+      },
+      true,
+    );
+  })();
+</script>

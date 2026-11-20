@@ -1,0 +1,399 @@
+---
+// Bidirectional volume converter for one unit pair. The result updates as
+// the user types; the initial answer is server-rendered so the page still
+// answers without JavaScript (the reference table below does too).
+// The form also has an explicit Convert submit button (MWG forms: every
+// form gets a submit button with actionable language). It runs the same
+// conversion the live updates perform; it never navigates anywhere.
+// Because the live updates already computed the answer, a Convert click
+// would look dead without visible feedback (Cozy, 2026-11-20), so the
+// submit handler flashes the result and moves focus to it.
+//
+// Accessibility follows Modern Web Guidance: `forms` (real <form>,
+// labels above inputs, hints above inputs, 48px targets),
+// `validate-input-after-interaction` (:user-invalid styling, error text
+// revealed only after interaction), `accessible-error-announcement`
+// (aria-invalid synced with :user-invalid, one polite live region).
+//
+// Rounding: milliliter results show one decimal below 100 ml and round
+// to whole milliliters above that; every other unit shows two decimals
+// (trailing zeros trimmed). The same rule runs server-side (below) and
+// client-side (the fmt function in the script), so the initial answer
+// and the live answers can never disagree.
+interface Props {
+  fromLabel: string;
+  fromSingular: string;
+  fromPlural: string;
+  fromCode: string;
+  fromHint: string;
+  toLabel: string;
+  toSingular: string;
+  toPlural: string;
+  toCode: string;
+  toHint: string;
+  factor: number;
+  initialFrom?: number;
+  presets: { label: string; amount: number }[];
+}
+
+const {
+  fromLabel,
+  fromSingular,
+  fromPlural,
+  fromCode,
+  fromHint,
+  toLabel,
+  toSingular,
+  toPlural,
+  toCode,
+  toHint,
+  factor,
+  initialFrom = 1,
+  presets,
+} = Astro.props;
+
+function fmt(value: number, code: string) {
+  const decimals = code === 'ml' ? (value < 100 ? 1 : 0) : 2;
+  return String(Number(value.toFixed(decimals)));
+}
+
+const initialTo = initialFrom * factor;
+const fromText =
+  initialFrom === 1
+    ? `1 ${fromSingular}`
+    : `${fmt(initialFrom, fromCode)} ${fromPlural}`;
+const toText =
+  initialTo === 1
+    ? `1 ${toSingular}`
+    : `${fmt(initialTo, toCode)} ${toPlural}`;
+---
+
+<form
+  id="converter-form"
+  class="converter"
+  aria-labelledby="converter-heading"
+  novalidate
+  data-factor={factor}
+  data-from-singular={fromSingular}
+  data-from-plural={fromPlural}
+  data-from-code={fromCode}
+  data-to-singular={toSingular}
+  data-to-plural={toPlural}
+  data-to-code={toCode}
+>
+  <h2 id="converter-heading">
+    Convert {fromPlural} to {toPlural}
+  </h2>
+  <div class="converter-fields">
+    <div class="field">
+      <label for="from-input">{fromLabel}</label>
+      <span id="from-hint" class="hint">{fromHint}</span>
+      <input
+        type="number"
+        id="from-input"
+        name="from"
+        value={initialFrom}
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="from-hint"
+        aria-invalid="false"
+        data-error="from-error"
+      />
+      <div id="from-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more {
+          fromPlural
+        }.
+      </div>
+    </div>
+    <div class="field">
+      <label for="to-input">{toLabel}</label>
+      <span id="to-hint" class="hint">{toHint}</span>
+      <input
+        type="number"
+        id="to-input"
+        name="to"
+        value={fmt(initialTo, toCode)}
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="to-hint"
+        aria-invalid="false"
+        data-error="to-error"
+      />
+      <div id="to-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more {
+          toPlural
+        }.
+      </div>
+    </div>
+  </div>
+  <button type="submit" class="convert-button">Convert</button>
+  <!-- tabindex="-1" so a Convert click can move focus here (MWG
+       accessibility: programmatically focusable, not in the tab order).
+       No aria-hidden: a focusable element must never be aria-hidden.
+       The live region still announces typing updates; the result text
+       itself is not a live region, so it is never announced twice. -->
+  <p class="converter-result" id="converter-result" tabindex="-1">
+    {fromText} = {toText}
+  </p>
+  <fieldset class="presets">
+    <legend>Common amounts</legend>
+    {
+      presets.map((preset) => (
+        <button type="button" class="chip" data-amount={preset.amount}>
+          {preset.label}
+        </button>
+      ))
+    }
+  </fieldset>
+</form>
+<div id="converter-announcer" class="visually-hidden" aria-live="polite"></div>
+
+<script is:inline>
+  (function () {
+    var form = document.getElementById('converter-form');
+    if (!form) return;
+    var factor = parseFloat(form.dataset.factor);
+    var fromSingular = form.dataset.fromSingular;
+    var fromPlural = form.dataset.fromPlural;
+    var fromCode = form.dataset.fromCode;
+    var toSingular = form.dataset.toSingular;
+    var toPlural = form.dataset.toPlural;
+    var toCode = form.dataset.toCode;
+    var fromInput = document.getElementById('from-input');
+    var toInput = document.getElementById('to-input');
+    var result = document.getElementById('converter-result');
+    var announcer = document.getElementById('converter-announcer');
+    var announceTimer = null;
+    var announcedField = null;
+
+    // One polite live region for the page carries both result updates and
+    // error announcements, debounced so typing does not spam it.
+    function announce(text) {
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      announceTimer = setTimeout(function () {
+        announcer.textContent = text;
+      }, 500);
+    }
+
+    // Milliliter results: one decimal below 100 ml, whole milliliters
+    // above that. Every other unit: two decimals. Trailing zeros are
+    // trimmed by the Number() round-trip. Mirrors the server-side fmt.
+    function fmt(value, code) {
+      var decimals = code === 'ml' ? (value < 100 ? 1 : 0) : 2;
+      var rounded = Number(value.toFixed(decimals));
+      return String(rounded);
+    }
+
+    function showResult(fromValue) {
+      var toValue = fromValue * factor;
+      var fromText =
+        fromValue === 1
+          ? '1 ' + fromSingular
+          : fmt(fromValue, fromCode) + ' ' + fromPlural;
+      var toText =
+        toValue === 1
+          ? '1 ' + toSingular
+          : fmt(toValue, toCode) + ' ' + toPlural;
+      result.textContent = fromText + ' = ' + toText;
+      announce(result.textContent);
+    }
+
+    function showCleared() {
+      result.textContent =
+        'Enter ' + fromPlural + ' or ' + toPlural + ' to convert.';
+      announce(result.textContent);
+    }
+
+    // Brief highlight on the result after a Convert click: the answer
+    // was already showing (live updates), so the click needs visible
+    // feedback. Removing the class and forcing a reflow restarts the
+    // animation on repeated clicks. Under prefers-reduced-motion the
+    // animation never runs (CSS); the focus move still applies.
+    function flashResult() {
+      result.classList.remove('result-flash');
+      void result.offsetWidth;
+      result.classList.add('result-flash');
+    }
+
+    function fromFrom() {
+      var value = parseFloat(fromInput.value);
+      if (fromInput.value === '' || isNaN(value) || value < 0) {
+        if (fromInput.value === '') {
+          toInput.value = '';
+          showCleared();
+        }
+        return;
+      }
+      toInput.value = fmt(value * factor, toCode);
+      showResult(value);
+    }
+
+    function fromTo() {
+      var value = parseFloat(toInput.value);
+      if (toInput.value === '' || isNaN(value) || value < 0) {
+        if (toInput.value === '') {
+          fromInput.value = '';
+          showCleared();
+        }
+        return;
+      }
+      var fromValue = value / factor;
+      fromInput.value = fmt(fromValue, fromCode);
+      showResult(fromValue);
+    }
+
+    // The Convert button (and Enter) runs the conversion from the field
+    // the user last edited. Live updates already keep the two fields
+    // in sync, so converting from the last-edited field is always the
+    // value the user means. No server: the submit never navigates (the
+    // form carries novalidate, so native bubbles never appear and errors
+    // stay inline). On an invalid field, focus moves to the first error
+    // (MWG forms: submit is the final gatekeeper).
+    var lastEdited = fromInput;
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var fields = [fromInput, toInput];
+      var firstInvalid = null;
+      fields.forEach(function (el) {
+        syncAria(el, true);
+        if (!firstInvalid && el.getAttribute('aria-invalid') === 'true')
+          firstInvalid = el;
+      });
+      if (firstInvalid) {
+        firstInvalid.focus();
+        return;
+      }
+      if (lastEdited === toInput) fromTo();
+      else fromFrom();
+      // Visible feedback for the click: flash the result and move focus
+      // to it, so the user sees and lands on the answer they just
+      // asked for. Focus announces the result to screen readers, so the
+      // pending live-region announcement is cleared to avoid saying it
+      // twice. On error (above) there is no flash and focus stays on
+      // the invalid field.
+      flashResult();
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      result.focus();
+    });
+
+    fromInput.addEventListener('input', function () {
+      lastEdited = fromInput;
+      fromFrom();
+    });
+    toInput.addEventListener('input', function () {
+      lastEdited = toInput;
+      fromTo();
+    });
+
+    form.querySelectorAll('.chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        fromInput.value = chip.dataset.amount;
+        lastEdited = fromInput;
+        fromFrom();
+        fromInput.focus();
+      });
+    });
+
+    // Keep aria-invalid in sync with the CSS :user-invalid state, and
+    // announce errors through the one polite live region. Adapted from
+    // the validate-input-after-interaction guide.
+    function linkError(el, shown) {
+      var errorId = el.dataset.error;
+      if (!errorId) return;
+      var ids = (el.getAttribute('aria-describedby') || '')
+        .split(/\s+/)
+        .filter(function (id) {
+          return id && id !== errorId;
+        });
+      if (shown) ids.push(errorId);
+      if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
+      else el.removeAttribute('aria-describedby');
+    }
+
+    function spokenText(node) {
+      var copy = node.cloneNode(true);
+      copy.querySelectorAll('[aria-hidden="true"]').forEach(function (n) {
+        n.remove();
+      });
+      copy
+        .querySelectorAll('[role="img"][aria-label]')
+        .forEach(function (n) {
+          n.replaceWith(n.getAttribute('aria-label') + ': ');
+        });
+      return copy.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    var flagged = new WeakSet();
+    var announced = new WeakSet();
+    function syncAria(el, doAnnounce) {
+      if (!el.matches || !el.matches('input, select, textarea')) return;
+      var invalid = el.matches(':user-invalid');
+      if (invalid) {
+        if (doAnnounce && !announced.has(el)) {
+          var error = document.getElementById(el.dataset.error);
+          if (error) {
+            var label = el.labels && el.labels[0]
+              ? spokenText(el.labels[0]) + ': '
+              : '';
+            announcedField = el;
+            announce(label + spokenText(error));
+          }
+          announced.add(el);
+        }
+        el.setAttribute('aria-invalid', 'true');
+        linkError(el, true);
+        flagged.add(el);
+      } else if (
+        flagged.has(el) ||
+        el.getAttribute('aria-invalid') !== 'true'
+      ) {
+        el.setAttribute('aria-invalid', 'false');
+        linkError(el, false);
+        flagged.delete(el);
+        announced.delete(el);
+        if (announcedField === el) {
+          clearTimeout(announceTimer);
+          announcer.textContent = '';
+        }
+      }
+    }
+
+    form
+      .querySelectorAll('input, select, textarea')
+      .forEach(function (el) {
+        syncAria(el);
+      });
+    form.addEventListener(
+      'blur',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener('input', function (e) {
+      if (e.target.hasAttribute('aria-invalid')) syncAria(e.target);
+    });
+    form.addEventListener(
+      'change',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener(
+      'invalid',
+      function (e) {
+        announced.add(e.target);
+        syncAria(e.target);
+      },
+      true,
+    );
+  })();
+</script>

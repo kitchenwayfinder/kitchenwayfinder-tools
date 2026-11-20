@@ -33,6 +33,14 @@ const engines = defineCollection({
 
 const variations = defineCollection({
   loader: glob({ pattern: '**/*.json', base: './src/content/variations' }),
+  // Shared shape for ALL engines. The content fields (tutorial, howTo,
+  // examples, formula, faqs, felicityNote, links) are the same on every
+  // variation page; the calculator fields differ per engine, so the
+  // weight-converter fields are optional and each engine carries its
+  // own numbers in `data` + `table`. New engines MUST set `lede` (the
+  // intro paragraph under the H1), `summary` (one line for the engine
+  // index + sibling lists), and `table` (the reference table); the
+  // pilot computes those from its weight fields instead.
   schema: z.object({
     engine: z.string(),
     name: z.string(),
@@ -48,18 +56,42 @@ const variations = defineCollection({
     // Meta description, 140-155 chars.
     description: z.string(),
     dateModified: z.string(),
+    // Lede paragraph under the H1 (new engines). The pilot computes its
+    // lede from gramsPerCup/measureNote/sourceNote instead.
+    lede: z.string().optional(),
+    // One-line summary for the engine index list and the sibling list
+    // on variation pages (new engines). E.g. "350F, 25 min becomes
+    // 325F, 20 min in the air fryer."
+    summary: z.string().optional(),
+    // Reference table, rendered as-is by the variation template.
+    // Columns are the thead cells; rows are tbody rows (first cell is
+    // the row header).
+    table: z
+      .object({
+        caption: z.string(),
+        columns: z.array(z.string()),
+        rows: z.array(z.array(z.string())),
+      })
+      .optional(),
+    // Engine-specific calculator data (ratios, constants, defaults).
+    // Each engine's template + component reads the fields it defines.
+    data: z.record(z.string(), z.unknown()).optional(),
     // King Arthur grams per US cup (spooned and levelled unless noted).
-    gramsPerCup: z.number(),
+    // Weight converter only.
+    gramsPerCup: z.number().optional(),
     // King Arthur ounces per US cup (their own rounded figure).
-    ouncesPerCup: z.number(),
+    ouncesPerCup: z.number().optional(),
     // Grams per tablespoon (gramsPerCup / 16, rounded to 1 decimal).
-    gramsPerTablespoon: z.number(),
+    gramsPerTablespoon: z.number().optional(),
     // How the cup is filled: "spooned and levelled", "packed", etc.
-    measureNote: z.string(),
+    measureNote: z.string().optional(),
     // One line naming the source value, e.g. "King Arthur lists ...".
-    sourceNote: z.string(),
-    // Quick-amount chips under the calculator.
-    presets: z.array(z.object({ label: z.string(), cups: z.number() })),
+    sourceNote: z.string().optional(),
+    // Quick-amount chips under the calculator. Shape differs per engine
+    // (cups for weights, tempF/timeMin for oven-to-air-fryer, ...), so
+    // the object is loose: label is required, the rest passes through
+    // to the component. (Zod 4: .loose() keeps unknown keys.)
+    presets: z.array(z.object({ label: z.string() }).loose()),
     // An extra unit the ingredient is also measured in (butter sticks).
     extraUnit: z
       .object({

@@ -1,0 +1,402 @@
+---
+// Pan-size converter for one pan pair. The recipe's batter (cups) and
+// bake time (minutes) go in; the scaled batter for the new pan(s) and
+// the adjusted bake time come out. The scale factor is the area ratio
+// for flat pans of equal depth, or the volume ratio where the depths
+// differ (loaf pans, bundt); the variation data says which.
+// Bake time follows batter depth (King Arthur Baking): same depth
+// means the same time, deeper batter takes 10 to 15 minutes longer,
+// shallower batter needs checking 10 to 15 minutes early. The time
+// rule comes from the variation data, so the tool never invents a
+// time adjustment for a pair that does not need one.
+//
+// Patterns copied from WeightConverter: the result updates as the user
+// types; the initial answer (from the variation's standard amounts) is
+// server-rendered so the page still answers without JavaScript; the
+// form has an explicit Convert submit button that runs the same
+// conversion, flashes the result and moves focus to it; one polite
+// live region carries result updates and error announcements.
+interface Props {
+  fromPan: string;
+  toPan: string;
+  factor: number;
+  basis: string;
+  timeRule: string;
+  defaultCups: number;
+  defaultTime: number;
+  presets: { label: string; cups: number; time: number }[];
+}
+
+const {
+  fromPan,
+  toPan,
+  factor,
+  timeRule,
+  defaultCups,
+  defaultTime,
+  presets,
+} = Astro.props;
+
+// One decimal, trailing ".0" trimmed. Mirrored in the inline script.
+const fmtCups = (n: number) => {
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+};
+const cupsLabel = (n: number) => `${fmtCups(n)} cup${n === 1 ? '' : 's'}`;
+
+const timeText = (time: number) => {
+  if (timeRule === 'longer')
+    return `Bake ${time} to ${time + 15} min. Start checking at ${time} min and expect up to 15 min longer.`;
+  if (timeRule === 'shorter')
+    return `Start checking ${Math.max(time - 15, 5)} min in, about 10 to 15 min early.`;
+  return `Bake about ${time} min, the same as the recipe.`;
+};
+
+const resultText = (cups: number, time: number) => {
+  const scaled = cups * factor;
+  const batter =
+    fmtCups(scaled) === fmtCups(cups)
+      ? `${cupsLabel(cups)} of batter stays ${cupsLabel(scaled)} in ${toPan}`
+      : `${cupsLabel(cups)} of batter becomes ${cupsLabel(scaled)} in ${toPan}`;
+  return `${batter}. ${timeText(time)}`;
+};
+
+const initialResult = resultText(defaultCups, defaultTime);
+---
+
+<form
+  id="converter-form"
+  class="converter"
+  aria-labelledby="converter-heading"
+  novalidate
+  data-factor={factor}
+  data-time-rule={timeRule}
+  data-to-pan={toPan}
+>
+  <h2 id="converter-heading">Convert {fromPan} to {toPan}</h2>
+  <div class="converter-fields">
+    <div class="field">
+      <label for="batter-input">Batter</label>
+      <span id="batter-hint" class="hint">
+        Cups of batter, for the {fromPan}
+      </span>
+      <input
+        type="number"
+        id="batter-input"
+        name="batter"
+        value={defaultCups}
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="batter-hint"
+        aria-invalid="false"
+        data-error="batter-error"
+      />
+      <div id="batter-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more cups of
+        batter.
+      </div>
+    </div>
+    <div class="field">
+      <label for="time-input">Bake time</label>
+      <span id="time-hint" class="hint">Minutes in the recipe</span>
+      <input
+        type="number"
+        id="time-input"
+        name="time"
+        value={defaultTime}
+        min="0"
+        step="any"
+        inputmode="decimal"
+        enterkeyhint="done"
+        aria-describedby="time-hint"
+        aria-invalid="false"
+        data-error="time-error"
+      />
+      <div id="time-error" class="error-msg">
+        <span role="img" aria-label="Error">!</span> Enter 0 or more minutes.
+      </div>
+    </div>
+  </div>
+  <button type="submit" class="convert-button">Convert</button>
+  <!-- tabindex="-1" so a Convert click can move focus here (MWG
+       accessibility: programmatically focusable, not in the tab order).
+       No aria-hidden: a focusable element must never be aria-hidden.
+       The live region still announces typing updates; the result text
+       itself is not a live region, so it is never announced twice. -->
+  <p class="converter-result" id="converter-result" tabindex="-1">
+    {initialResult}
+  </p>
+  <fieldset class="presets">
+    <legend>Common recipes</legend>
+    {
+      presets.map((preset) => (
+        <button
+          type="button"
+          class="chip"
+          data-cups={preset.cups}
+          data-time={preset.time}
+        >
+          {preset.label}
+        </button>
+      ))
+    }
+  </fieldset>
+</form>
+<div id="converter-announcer" class="visually-hidden" aria-live="polite"></div>
+
+<script is:inline>
+  (function () {
+    var form = document.getElementById('converter-form');
+    if (!form) return;
+    var factor = parseFloat(form.dataset.factor);
+    var timeRule = form.dataset.timeRule;
+    var toPan = form.dataset.toPan;
+    var batterInput = document.getElementById('batter-input');
+    var timeInput = document.getElementById('time-input');
+    var result = document.getElementById('converter-result');
+    var announcer = document.getElementById('converter-announcer');
+    var announceTimer = null;
+    var announcedField = null;
+
+    // One polite live region for the page carries both result updates and
+    // error announcements, debounced so typing does not spam it.
+    function announce(text) {
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      announceTimer = setTimeout(function () {
+        announcer.textContent = text;
+      }, 500);
+    }
+
+    function fmtCups(value) {
+      var rounded = Math.round(value * 10) / 10;
+      return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+    }
+
+    function cupsLabel(value) {
+      return fmtCups(value) + ' cup' + (value === 1 ? '' : 's');
+    }
+
+    function timeText(time) {
+      if (timeRule === 'longer')
+        return (
+          'Bake ' +
+          time +
+          ' to ' +
+          (time + 15) +
+          ' min. Start checking at ' +
+          time +
+          ' min and expect up to 15 min longer.'
+        );
+      if (timeRule === 'shorter')
+        return (
+          'Start checking ' +
+          Math.max(time - 15, 5) +
+          ' min in, about 10 to 15 min early.'
+        );
+      return 'Bake about ' + time + ' min, the same as the recipe.';
+    }
+
+    function batterText(cups) {
+      var scaled = cups * factor;
+      if (fmtCups(scaled) === fmtCups(cups))
+        return (
+          cupsLabel(cups) +
+          ' of batter stays ' +
+          cupsLabel(scaled) +
+          ' in ' +
+          toPan
+        );
+      return (
+        cupsLabel(cups) +
+        ' of batter becomes ' +
+        cupsLabel(scaled) +
+        ' in ' +
+        toPan
+      );
+    }
+
+    function showResult(cups, time) {
+      var text = batterText(cups);
+      if (time !== null) text += '. ' + timeText(time);
+      result.textContent = text;
+      announce(result.textContent);
+    }
+
+    function showCleared() {
+      result.textContent = 'Enter the batter and bake time to convert.';
+      announce(result.textContent);
+    }
+
+    // Brief highlight on the result after a Convert click: the answer
+    // was already showing (live updates), so the click needs visible
+    // feedback. Removing the class and forcing a reflow restarts the
+    // animation on repeated clicks. Under prefers-reduced-motion the
+    // animation never runs (CSS); the focus move still applies.
+    function flashResult() {
+      result.classList.remove('result-flash');
+      void result.offsetWidth;
+      result.classList.add('result-flash');
+    }
+
+    // The batter amount drives the conversion; the bake time is
+    // optional for the batter answer, so a missing time still shows the
+    // scaled batter, without a time sentence.
+    function convert() {
+      var cups = parseFloat(batterInput.value);
+      if (batterInput.value === '' || isNaN(cups) || cups < 0) {
+        if (batterInput.value === '') showCleared();
+        return;
+      }
+      var time = parseFloat(timeInput.value);
+      if (timeInput.value === '' || isNaN(time) || time < 0) {
+        showResult(cups, null);
+        return;
+      }
+      showResult(cups, time);
+    }
+
+    // The Convert button (and Enter) runs the conversion from the
+    // current field values. Live updates already keep the result in
+    // sync, so a click re-states the answer the user can see. No
+    // server: the submit never navigates (the form carries novalidate,
+    // so native bubbles never appear and errors stay inline). On an
+    // invalid field, focus moves to the first error (MWG forms: submit
+    // is the final gatekeeper).
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var fields = [batterInput, timeInput];
+      var firstInvalid = null;
+      fields.forEach(function (el) {
+        syncAria(el, true);
+        if (!firstInvalid && el.getAttribute('aria-invalid') === 'true')
+          firstInvalid = el;
+      });
+      if (firstInvalid) {
+        firstInvalid.focus();
+        return;
+      }
+      convert();
+      // Visible feedback for the click: flash the result and move focus
+      // to it, so the user sees — and lands on — the answer they just
+      // asked for. Focus announces the result to screen readers, so the
+      // pending live-region announcement is cleared to avoid saying it
+      // twice. On error (above) there is no flash and focus stays on
+      // the invalid field.
+      flashResult();
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      result.focus();
+    });
+
+    batterInput.addEventListener('input', convert);
+    timeInput.addEventListener('input', convert);
+
+    form.querySelectorAll('.chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        batterInput.value = chip.dataset.cups;
+        timeInput.value = chip.dataset.time;
+        convert();
+        batterInput.focus();
+      });
+    });
+
+    // Keep aria-invalid in sync with the CSS :user-invalid state, and
+    // announce errors through the one polite live region. Adapted from
+    // the validate-input-after-interaction guide.
+    function linkError(el, shown) {
+      var errorId = el.dataset.error;
+      if (!errorId) return;
+      var ids = (el.getAttribute('aria-describedby') || '')
+        .split(/\s+/)
+        .filter(function (id) {
+          return id && id !== errorId;
+        });
+      if (shown) ids.push(errorId);
+      if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
+      else el.removeAttribute('aria-describedby');
+    }
+
+    function spokenText(node) {
+      var copy = node.cloneNode(true);
+      copy.querySelectorAll('[aria-hidden="true"]').forEach(function (n) {
+        n.remove();
+      });
+      copy
+        .querySelectorAll('[role="img"][aria-label]')
+        .forEach(function (n) {
+          n.replaceWith(n.getAttribute('aria-label') + ': ');
+        });
+      return copy.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    var flagged = new WeakSet();
+    var announced = new WeakSet();
+    function syncAria(el, doAnnounce) {
+      if (!el.matches || !el.matches('input, select, textarea')) return;
+      var invalid = el.matches(':user-invalid');
+      if (invalid) {
+        if (doAnnounce && !announced.has(el)) {
+          var error = document.getElementById(el.dataset.error);
+          if (error) {
+            var label =
+              el.labels && el.labels[0]
+                ? spokenText(el.labels[0]) + ': '
+                : '';
+            announcedField = el;
+            announce(label + spokenText(error));
+          }
+          announced.add(el);
+        }
+        el.setAttribute('aria-invalid', 'true');
+        linkError(el, true);
+        flagged.add(el);
+      } else if (
+        flagged.has(el) ||
+        el.getAttribute('aria-invalid') !== 'true'
+      ) {
+        el.setAttribute('aria-invalid', 'false');
+        linkError(el, false);
+        flagged.delete(el);
+        announced.delete(el);
+        if (announcedField === el) {
+          clearTimeout(announceTimer);
+          announcer.textContent = '';
+        }
+      }
+    }
+
+    form
+      .querySelectorAll('input, select, textarea')
+      .forEach(function (el) {
+        syncAria(el);
+      });
+    form.addEventListener(
+      'blur',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener('input', function (e) {
+      if (e.target.hasAttribute('aria-invalid')) syncAria(e.target);
+    });
+    form.addEventListener(
+      'change',
+      function (e) {
+        syncAria(e.target, true);
+      },
+      true,
+    );
+    form.addEventListener(
+      'invalid',
+      function (e) {
+        announced.add(e.target);
+        syncAria(e.target);
+      },
+      true,
+    );
+  })();
+</script>

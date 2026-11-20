@@ -1,0 +1,416 @@
+---
+// Egg boiling time calculator: size, starting temperature, altitude, and
+// doneness in, boiling time out. The time comes from the Williams
+// heat-diffusion formula (Charles D. H. Williams, University of Exeter):
+//   t = M^(2/3) x LAM x ln(0.76 x (Tegg - Twater) / (Tyolk - Twater))
+// with LAM = c x rho^(1/3) / (K x pi^2 x (4pi/3)^(2/3)) = 27.05 s/g^(2/3)
+// from Williams' constants (density 1.038 g/cm3, specific heat 3.7 J/g/K,
+// thermal conductivity 5.4e-3 W/cm/K). Yolk-edge targets: soft 63C, jammy
+// 68C, medium 70C, hard 84C. Egg weights are the USDA sizes. Boiling
+// points are the 1976 US Standard Atmosphere figures. Times round to the
+// nearest 5 seconds, matching the reference tables on the variation pages.
+//
+// The formula assumes eggs lowered into already-boiling water. The cold
+// start variation passes calculatorNote, which renders under the result
+// to say the number is the boiling-phase time only.
+//
+// Patterns copied from WeightConverter: live updates on every change,
+// server-rendered initial answer, an explicit Convert submit button that
+// flashes the result and moves focus to it, and one polite live region.
+// There is no :user-invalid handling here: the four selects only offer
+// valid options, so no field can ever be invalid (no error text exists).
+interface Props {
+  defaults: {
+    size: string;
+    start: string;
+    altitude: string;
+    doneness: string;
+  };
+  presets: {
+    label: string;
+    size: string;
+    start: string;
+    altitude: string;
+    doneness: string;
+  }[];
+  calculatorNote?: string;
+}
+
+const { defaults, presets, calculatorNote } = Astro.props;
+
+// Williams constants (see the header comment). The client script below
+// repeats these values: an is:inline script cannot see frontmatter, so
+// the two copies must stay in sync. The check script re-derives every
+// published time from these same numbers.
+const LAM =
+  (3.7 * Math.pow(1.038, 1 / 3)) /
+  (5.4e-3 * Math.PI ** 2 * Math.pow((4 * Math.PI) / 3, 2 / 3));
+const WEIGHTS: Record<string, number> = {
+  medium: 50,
+  large: 57,
+  'extra-large': 64,
+  jumbo: 71,
+};
+const TARGETS: Record<string, number> = {
+  soft: 63,
+  jammy: 68,
+  medium: 70,
+  hard: 84,
+};
+const START_TEMPS: Record<string, number> = { fridge: 4, room: 20 };
+const BOIL_POINTS: Record<string, number> = {
+  sea: 100,
+  '3000': 96.9,
+  '5000': 94.9,
+  '7000': 92.9,
+};
+
+const SIZE_LABELS: Record<string, string> = {
+  medium: 'Medium',
+  large: 'Large',
+  'extra-large': 'Extra-large',
+  jumbo: 'Jumbo',
+};
+const START_LABELS: Record<string, string> = {
+  fridge: 'from the fridge',
+  room: 'at room temperature',
+};
+const ALTITUDE_LABELS: Record<string, string> = {
+  sea: 'at sea level',
+  '3000': 'at 3,000 ft',
+  '5000': 'at 5,000 ft',
+  '7000': 'at 7,000 ft',
+};
+const DONENESS_LABELS: Record<string, string> = {
+  soft: 'soft-boiled',
+  jammy: 'jammy',
+  medium: 'medium-boiled',
+  hard: 'hard-boiled',
+};
+
+function boilingSeconds(
+  size: string,
+  start: string,
+  altitude: string,
+  doneness: string,
+) {
+  const mass = WEIGHTS[size];
+  const tEgg = START_TEMPS[start];
+  const tWater = BOIL_POINTS[altitude];
+  const tYolk = TARGETS[doneness];
+  return (
+    Math.pow(mass, 2 / 3) *
+    LAM *
+    Math.log((0.76 * (tEgg - tWater)) / (tYolk - tWater))
+  );
+}
+
+function formatTime(seconds: number) {
+  const rounded = Math.round(seconds / 5) * 5;
+  const minutes = Math.floor(rounded / 60);
+  const secs = rounded % 60;
+  if (minutes === 0) return `${secs} seconds`;
+  if (secs === 0) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  return `${minutes} minute${minutes === 1 ? '' : 's'} ${secs} seconds`;
+}
+
+function resultText(
+  size: string,
+  start: string,
+  altitude: string,
+  doneness: string,
+) {
+  return `${SIZE_LABELS[size]} egg ${START_LABELS[start]}, ${DONENESS_LABELS[doneness]} ${ALTITUDE_LABELS[altitude]}: ${formatTime(boilingSeconds(size, start, altitude, doneness))}.`;
+}
+
+const initialResult = resultText(
+  defaults.size,
+  defaults.start,
+  defaults.altitude,
+  defaults.doneness,
+);
+---
+
+<form
+  id="converter-form"
+  class="converter"
+  aria-labelledby="converter-heading"
+  novalidate
+>
+  <h2 id="converter-heading">How long to boil your eggs</h2>
+  <div class="converter-fields">
+    <div class="field">
+      <label for="size-select">Egg size</label>
+      <span id="size-hint" class="hint">USDA weight in grams</span>
+      <select
+        id="size-select"
+        name="size"
+        aria-describedby="size-hint"
+      >
+        <option value="medium" selected={defaults.size === 'medium'}>
+          Medium (50 g)
+        </option>
+        <option value="large" selected={defaults.size === 'large'}>
+          Large (57 g)
+        </option>
+        <option
+          value="extra-large"
+          selected={defaults.size === 'extra-large'}
+        >
+          Extra-large (64 g)
+        </option>
+        <option value="jumbo" selected={defaults.size === 'jumbo'}>
+          Jumbo (71 g)
+        </option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="start-select">Starting temperature</label>
+      <span id="start-hint" class="hint">Fridge is 4°C, room is 20°C</span>
+      <select
+        id="start-select"
+        name="start"
+        aria-describedby="start-hint"
+      >
+        <option value="fridge" selected={defaults.start === 'fridge'}>
+          Fridge
+        </option>
+        <option value="room" selected={defaults.start === 'room'}>
+          Room temperature
+        </option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="altitude-select">Altitude</label>
+      <span id="altitude-hint" class="hint">
+        Water boils cooler as you climb
+      </span>
+      <select
+        id="altitude-select"
+        name="altitude"
+        aria-describedby="altitude-hint"
+      >
+        <option value="sea" selected={defaults.altitude === 'sea'}>
+          Sea level
+        </option>
+        <option value="3000" selected={defaults.altitude === '3000'}>
+          3,000 ft
+        </option>
+        <option value="5000" selected={defaults.altitude === '5000'}>
+          5,000 ft
+        </option>
+        <option value="7000" selected={defaults.altitude === '7000'}>
+          7,000 ft
+        </option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="doneness-select">Doneness</label>
+      <span id="doneness-hint" class="hint">
+        Soft 63°C, jammy 68°C, medium 70°C, hard 84°C
+      </span>
+      <select
+        id="doneness-select"
+        name="doneness"
+        aria-describedby="doneness-hint"
+      >
+        <option value="soft" selected={defaults.doneness === 'soft'}>
+          Soft-boiled
+        </option>
+        <option value="jammy" selected={defaults.doneness === 'jammy'}>
+          Jammy
+        </option>
+        <option value="medium" selected={defaults.doneness === 'medium'}>
+          Medium
+        </option>
+        <option value="hard" selected={defaults.doneness === 'hard'}>
+          Hard-boiled
+        </option>
+      </select>
+    </div>
+  </div>
+  <button type="submit" class="convert-button">Convert</button>
+  <!-- tabindex="-1" so a Convert click can move focus here (MWG
+       accessibility: programmatically focusable, not in the tab order).
+       No aria-hidden: a focusable element must never be aria-hidden.
+       The live region still announces select changes; the result text
+       itself is not a live region, so it is never announced twice. -->
+  <p class="converter-result" id="converter-result" tabindex="-1">
+    {initialResult}
+  </p>
+  {
+    calculatorNote && (
+      <p class="hint" id="calculator-note">
+        {calculatorNote}
+      </p>
+    )
+  }
+  <fieldset class="presets">
+    <legend>Common combinations</legend>
+    {
+      presets.map((preset) => (
+        <button
+          type="button"
+          class="chip"
+          data-size={preset.size}
+          data-start={preset.start}
+          data-altitude={preset.altitude}
+          data-doneness={preset.doneness}
+        >
+          {preset.label}
+        </button>
+      ))
+    }
+  </fieldset>
+</form>
+<div id="converter-announcer" class="visually-hidden" aria-live="polite"></div>
+
+<script is:inline>
+  (function () {
+    var form = document.getElementById('converter-form');
+    if (!form) return;
+
+    // Williams formula constants, mirroring the frontmatter above.
+    // Keep the two copies in sync; the check script verifies both
+    // against the published tables.
+    var LAM =
+      (3.7 * Math.pow(1.038, 1 / 3)) /
+      (0.0054 * Math.PI * Math.PI * Math.pow((4 * Math.PI) / 3, 2 / 3));
+    var WEIGHTS = { medium: 50, large: 57, 'extra-large': 64, jumbo: 71 };
+    var TARGETS = { soft: 63, jammy: 68, medium: 70, hard: 84 };
+    var START_TEMPS = { fridge: 4, room: 20 };
+    var BOIL_POINTS = { sea: 100, '3000': 96.9, '5000': 94.9, '7000': 92.9 };
+    var SIZE_LABELS = {
+      medium: 'Medium',
+      large: 'Large',
+      'extra-large': 'Extra-large',
+      jumbo: 'Jumbo',
+    };
+    var START_LABELS = {
+      fridge: 'from the fridge',
+      room: 'at room temperature',
+    };
+    var ALTITUDE_LABELS = {
+      sea: 'at sea level',
+      '3000': 'at 3,000 ft',
+      '5000': 'at 5,000 ft',
+      '7000': 'at 7,000 ft',
+    };
+    var DONENESS_LABELS = {
+      soft: 'soft-boiled',
+      jammy: 'jammy',
+      medium: 'medium-boiled',
+      hard: 'hard-boiled',
+    };
+
+    var sizeSelect = document.getElementById('size-select');
+    var startSelect = document.getElementById('start-select');
+    var altitudeSelect = document.getElementById('altitude-select');
+    var donenessSelect = document.getElementById('doneness-select');
+    var result = document.getElementById('converter-result');
+    var announcer = document.getElementById('converter-announcer');
+    var announceTimer = null;
+
+    // One polite live region for the page carries result updates,
+    // debounced so rapid select changes do not spam it.
+    function announce(text) {
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      announceTimer = setTimeout(function () {
+        announcer.textContent = text;
+      }, 500);
+    }
+
+    function formatTime(seconds) {
+      var rounded = Math.round(seconds / 5) * 5;
+      var minutes = Math.floor(rounded / 60);
+      var secs = rounded % 60;
+      if (minutes === 0) return secs + ' seconds';
+      if (secs === 0) return minutes + ' minute' + (minutes === 1 ? '' : 's');
+      return (
+        minutes + ' minute' + (minutes === 1 ? '' : 's') + ' ' + secs + ' seconds'
+      );
+    }
+
+    function boilingSeconds(size, start, altitude, doneness) {
+      var mass = WEIGHTS[size];
+      var tEgg = START_TEMPS[start];
+      var tWater = BOIL_POINTS[altitude];
+      var tYolk = TARGETS[doneness];
+      return (
+        Math.pow(mass, 2 / 3) *
+        LAM *
+        Math.log((0.76 * (tEgg - tWater)) / (tYolk - tWater))
+      );
+    }
+
+    function resultText(size, start, altitude, doneness) {
+      return (
+        SIZE_LABELS[size] +
+        ' egg ' +
+        START_LABELS[start] +
+        ', ' +
+        DONENESS_LABELS[doneness] +
+        ' ' +
+        ALTITUDE_LABELS[altitude] +
+        ': ' +
+        formatTime(boilingSeconds(size, start, altitude, doneness)) +
+        '.'
+      );
+    }
+
+    function recalculate() {
+      var text = resultText(
+        sizeSelect.value,
+        startSelect.value,
+        altitudeSelect.value,
+        donenessSelect.value,
+      );
+      result.textContent = text;
+      announce(text);
+    }
+
+    // Brief highlight on the result after a Convert click: the answer
+    // was already showing (live updates), so the click needs visible
+    // feedback. Removing the class and forcing a reflow restarts the
+    // animation on repeated clicks. Under prefers-reduced-motion the
+    // animation never runs (CSS); the focus move still applies.
+    function flashResult() {
+      result.classList.remove('result-flash');
+      void result.offsetWidth;
+      result.classList.add('result-flash');
+    }
+
+    // The Convert button (and Enter) runs the calculation from the
+    // current selects. Live updates already keep the result in sync, so
+    // the submit is the explicit confirmation: it re-runs the same
+    // calculation, flashes the result, and moves focus to it. Focus
+    // announces the result to screen readers, so the pending live-region
+    // announcement is cleared to avoid saying it twice.
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      recalculate();
+      flashResult();
+      clearTimeout(announceTimer);
+      announcer.textContent = '';
+      result.focus();
+    });
+
+    [sizeSelect, startSelect, altitudeSelect, donenessSelect].forEach(
+      function (select) {
+        select.addEventListener('change', recalculate);
+      },
+    );
+
+    form.querySelectorAll('.chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        sizeSelect.value = chip.dataset.size;
+        startSelect.value = chip.dataset.start;
+        altitudeSelect.value = chip.dataset.altitude;
+        donenessSelect.value = chip.dataset.doneness;
+        recalculate();
+        sizeSelect.focus();
+      });
+    });
+  })();
+</script>
